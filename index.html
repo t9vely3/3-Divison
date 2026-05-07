@@ -2148,13 +2148,24 @@ function renderStudentList(list) {
     return;
   }
 
-  // 원서번호를 [연도, 번호] 숫자 쌍으로 파싱 (예: "A2026-150" → [2026, 150])
-  // 형식이 안 맞으면 [-1, -1] 반환해서 맨 아래로
+  // 원서번호 파싱 — 다양한 형식 지원
+  // 1) "A2026-150"  → [2026, 150]
+  // 2) "2026-150"   → [2026, 150]
+  // 3) "102153"     → [0, 102153]    (단일 숫자 → 큰 번호가 위)
+  // 4) "102,153"    → [0, 102153]    (콤마 제거)
+  // 5) ""           → [-2, -2]       (빈값 → 항상 맨 아래)
+  // 6) 그 외 형식   → [-1, -1]       (형식 깨짐 → 맨 아래)
   function parseAppNum(s) {
-    if (!s) return [-1, -1];
-    const m = String(s).match(/(\d{4})\D+(\d+)/);
-    if (!m) return [-1, -1];
-    return [parseInt(m[1], 10), parseInt(m[2], 10)];
+    if (s == null) return [-2, -2];
+    const str = String(s).trim();
+    if (!str) return [-2, -2];
+    // 1+2: 4자리 연도 + 구분자 + 번호
+    const m1 = str.match(/(\d{4})\D+(\d+)/);
+    if (m1) return [parseInt(m1[1], 10), parseInt(m1[2], 10)];
+    // 3+4: 단일 숫자(콤마/공백 제거)
+    const onlyNum = str.replace(/[,\s]/g, '');
+    if (/^\d+$/.test(onlyNum)) return [0, parseInt(onlyNum, 10)];
+    return [-1, -1];
   }
 
   // 정렬: 1차 - 일반(상단) → 종강 → 환불(맨 아래)
@@ -2166,9 +2177,12 @@ function renderStudentList(list) {
     // 같은 그룹 → 원서번호 비교
     const [ay, an] = parseAppNum(a.appNum);
     const [by, bn] = parseAppNum(b.appNum);
-    // 빈 값/형식 깨짐(-1)은 항상 맨 아래로
-    if (ay === -1 && by !== -1) return 1;
-    if (by === -1 && ay !== -1) return -1;
+    // 빈 값/형식 깨짐(-1, -2)은 항상 맨 아래로 (정렬 방향과 무관하게)
+    const aInvalid = (ay < 0);
+    const bInvalid = (by < 0);
+    if (aInvalid && !bInvalid) return 1;
+    if (bInvalid && !aInvalid) return -1;
+    if (aInvalid && bInvalid) return 0;
     // 정상 값끼리는 사용자 선택에 따라
     if (appNumSortOrder === 'desc') {
       if (ay !== by) return by - ay;
