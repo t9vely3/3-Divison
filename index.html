@@ -2128,12 +2128,26 @@ function renderStudentList(list) {
     return;
   }
 
-  // 정렬: 일반(상단) → 종강 → 환불(맨 아래)
-  // priority: refunded=2, completed=1, 그 외=0
+  // 원서번호를 [연도, 번호] 숫자 쌍으로 파싱 (예: "A2026-150" → [2026, 150])
+  // 형식이 안 맞으면 [-1, -1] 반환해서 맨 아래로
+  function parseAppNum(s) {
+    if (!s) return [-1, -1];
+    const m = String(s).match(/(\d{4})\D+(\d+)/);
+    if (!m) return [-1, -1];
+    return [parseInt(m[1], 10), parseInt(m[2], 10)];
+  }
+
+  // 정렬: 1차 - 일반(상단) → 종강 → 환불(맨 아래)
+  //       2차 - 같은 그룹 내에서 원서번호 내림차순 (최근 등록 먼저)
   const sorted = [...list].sort((a, b) => {
     const pa = a.isRefunded ? 2 : (a.isCompleted ? 1 : 0);
     const pb = b.isRefunded ? 2 : (b.isCompleted ? 1 : 0);
-    return pa - pb; // 낮은 priority(일반)가 위로
+    if (pa !== pb) return pa - pb; // 그룹이 다르면 그룹 우선
+    // 같은 그룹 → 원서번호 내림차순
+    const [ay, an] = parseAppNum(a.appNum);
+    const [by, bn] = parseAppNum(b.appNum);
+    if (ay !== by) return by - ay; // 연도 큰 순
+    return bn - an;                 // 번호 큰 순
   });
 
   const currentId = document.getElementById('studentId').value;
