@@ -241,7 +241,13 @@ button { outline: none; cursor: pointer; }
 
 .student-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
 .student-info { flex: 1; min-width: 0; }
-.student-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.student-name { font-size: 12px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
+.app-num-tag { font-size: 9px; font-weight: 800; color: var(--text-tertiary); background: var(--bg-muted); padding: 1px 5px; border-radius: 3px; letter-spacing: .2px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.student-item.state-refunded .app-num-tag { color: #fff; background: rgba(255,255,255,.15); }
+.student-item.state-completed .app-num-tag { color: #92400E; background: rgba(217,119,6,.15); }
+.student-item.state-leave .app-num-tag { color: #6D28D9; background: rgba(124,58,237,.15); }
+.student-item.state-care .app-num-tag { color: #B91C1C; background: rgba(220,38,38,.12); }
+.student-item.active .app-num-tag { color: var(--brand-text); background: rgba(99,102,241,.15); }
 .student-meta { font-size: 10px; color: var(--text-tertiary); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .student-badges { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 4px; }
 
@@ -2171,11 +2177,13 @@ function renderStudentList(list) {
     if (s.isRefunded) badges.push('<span class="mini-badge refund"><span class="dot"></span>환불</span>');
 
     const grad = avatarGradient(s.name);
+    // 원서번호: meta 영역 맨 앞에 표시 (정렬 기준이 한눈에 보이도록)
+    const appNumDisplay = s.appNum ? `<span class="app-num-tag">${escapeHTML(s.appNum)}</span>` : '';
     return `<li class="student-item ${stateClass} ${currentId === s.id ? 'active' : ''}" onclick="loadStudentDetail('${s.id}')">
       <input type="checkbox" data-id="${s.id}" class="stu-chk" onclick="event.stopPropagation();">
       <div class="student-avatar" style="background:linear-gradient(135deg, ${grad[0]} 0%, ${grad[1]} 100%);">${(s.name||'?').charAt(0)}</div>
       <div class="student-info">
-        <div class="student-name">${escapeHTML(s.name || '(이름 없음)')}</div>
+        <div class="student-name">${appNumDisplay}${escapeHTML(s.name || '(이름 없음)')}</div>
         <div class="student-meta">${escapeHTML(s.course || '-')} · ${escapeHTML(s.mentor || '미지정')}</div>
         <div class="student-badges">${badges.join('')}</div>
       </div>
