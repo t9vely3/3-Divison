@@ -211,6 +211,8 @@ button { outline: none; cursor: pointer; }
 .sidebar-actions { padding: 8px 14px; border-top: 1px dashed var(--border); display: flex; justify-content: space-between; align-items: center; }
 .select-all { font-size: 11px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .select-all input { margin: 0; accent-color: var(--brand); }
+.sort-toggle-btn { font-size: 10px; font-weight: 700; color: var(--text-secondary); background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 4px 8px; cursor: pointer; transition: all .12s; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sort-toggle-btn:hover { color: var(--brand-text); background: var(--brand-soft); border-color: var(--brand-border); }
 
 .student-list { list-style: none; margin: 0; padding: 8px 8px 12px; flex: 1; overflow-y: auto; }
 .student-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin-bottom: 4px; border-radius: var(--r-md); cursor: pointer; transition: all .12s; border: 1px solid transparent; position: relative; }
@@ -241,13 +243,12 @@ button { outline: none; cursor: pointer; }
 
 .student-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
 .student-info { flex: 1; min-width: 0; }
-.student-name { font-size: 12px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
-.app-num-tag { font-size: 9px; font-weight: 800; color: var(--text-tertiary); background: var(--bg-muted); padding: 1px 5px; border-radius: 3px; letter-spacing: .2px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.student-item.state-refunded .app-num-tag { color: #fff; background: rgba(255,255,255,.15); }
-.student-item.state-completed .app-num-tag { color: #92400E; background: rgba(217,119,6,.15); }
-.student-item.state-leave .app-num-tag { color: #6D28D9; background: rgba(124,58,237,.15); }
-.student-item.state-care .app-num-tag { color: #B91C1C; background: rgba(220,38,38,.12); }
-.student-item.active .app-num-tag { color: var(--brand-text); background: rgba(99,102,241,.15); }
+.student-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.student-appnum { font-size: 10.5px; font-weight: 800; color: var(--brand-text); letter-spacing: .3px; font-variant-numeric: tabular-nums; margin-bottom: 2px; }
+.student-item.state-care .student-appnum { color: #B91C1C; }
+.student-item.state-leave .student-appnum { color: #6D28D9; }
+.student-item.state-completed .student-appnum { color: #92400E; }
+.student-item.state-refunded .student-appnum { color: #FCD34D; }
 .student-meta { font-size: 10px; color: var(--text-tertiary); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .student-badges { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 4px; }
 
@@ -646,7 +647,12 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 
     <div class="sidebar-actions">
       <label class="select-all"><input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this)"> 전체 선택</label>
-      <button class="btn btn-danger btn-sm" onclick="deleteSelectedStudents()">선택 삭제</button>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <button class="sort-toggle-btn" id="sortToggleBtn" onclick="toggleSortOrder()" title="원서번호 정렬">
+          <span id="sortLabel">원서번호 ↓</span>
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSelectedStudents()">선택 삭제</button>
+      </div>
     </div>
 
     <ul class="student-list" id="studentList"></ul>
@@ -1656,6 +1662,7 @@ let confirmCallback = null;
 let pendingAuthAction = null;
 let isDirty = false;
 let isLoadingForm = false; // 프로그램이 폼을 채우는 중일 때 markDirty 무시
+let appNumSortOrder = 'desc'; // 'desc' (내림차순, 큰 번호 먼저) | 'asc' (오름차순)
 let cmdSelectedIdx = 0;
 let cmdResults = [];
 let editingMemoId = null;
@@ -2127,6 +2134,13 @@ function filterList() {
   renderStudentList(filtered);
   updateDashboard();
 }
+function toggleSortOrder() {
+  appNumSortOrder = appNumSortOrder === 'desc' ? 'asc' : 'desc';
+  const label = document.getElementById('sortLabel');
+  if (label) label.innerText = appNumSortOrder === 'desc' ? '원서번호 ↓' : '원서번호 ↑';
+  filterList();
+}
+
 function renderStudentList(list) {
   const ul = document.getElementById('studentList');
   if (list.length === 0) {
@@ -2144,16 +2158,25 @@ function renderStudentList(list) {
   }
 
   // 정렬: 1차 - 일반(상단) → 종강 → 환불(맨 아래)
-  //       2차 - 같은 그룹 내에서 원서번호 내림차순 (최근 등록 먼저)
+  //       2차 - 같은 그룹 내에서 원서번호 (사용자가 선택한 방향)
   const sorted = [...list].sort((a, b) => {
     const pa = a.isRefunded ? 2 : (a.isCompleted ? 1 : 0);
     const pb = b.isRefunded ? 2 : (b.isCompleted ? 1 : 0);
     if (pa !== pb) return pa - pb; // 그룹이 다르면 그룹 우선
-    // 같은 그룹 → 원서번호 내림차순
+    // 같은 그룹 → 원서번호 비교
     const [ay, an] = parseAppNum(a.appNum);
     const [by, bn] = parseAppNum(b.appNum);
-    if (ay !== by) return by - ay; // 연도 큰 순
-    return bn - an;                 // 번호 큰 순
+    // 빈 값/형식 깨짐(-1)은 항상 맨 아래로
+    if (ay === -1 && by !== -1) return 1;
+    if (by === -1 && ay !== -1) return -1;
+    // 정상 값끼리는 사용자 선택에 따라
+    if (appNumSortOrder === 'desc') {
+      if (ay !== by) return by - ay;
+      return bn - an;
+    } else {
+      if (ay !== by) return ay - by;
+      return an - bn;
+    }
   });
 
   const currentId = document.getElementById('studentId').value;
@@ -2177,13 +2200,13 @@ function renderStudentList(list) {
     if (s.isRefunded) badges.push('<span class="mini-badge refund"><span class="dot"></span>환불</span>');
 
     const grad = avatarGradient(s.name);
-    // 원서번호: meta 영역 맨 앞에 표시 (정렬 기준이 한눈에 보이도록)
-    const appNumDisplay = s.appNum ? `<span class="app-num-tag">${escapeHTML(s.appNum)}</span>` : '';
+    // 원서번호: 이름 위에 별도 줄로 표시 (가독성 향상)
     return `<li class="student-item ${stateClass} ${currentId === s.id ? 'active' : ''}" onclick="loadStudentDetail('${s.id}')">
       <input type="checkbox" data-id="${s.id}" class="stu-chk" onclick="event.stopPropagation();">
       <div class="student-avatar" style="background:linear-gradient(135deg, ${grad[0]} 0%, ${grad[1]} 100%);">${(s.name||'?').charAt(0)}</div>
       <div class="student-info">
-        <div class="student-name">${appNumDisplay}${escapeHTML(s.name || '(이름 없음)')}</div>
+        ${s.appNum ? `<div class="student-appnum">${escapeHTML(s.appNum)}</div>` : ''}
+        <div class="student-name">${escapeHTML(s.name || '(이름 없음)')}</div>
         <div class="student-meta">${escapeHTML(s.course || '-')} · ${escapeHTML(s.mentor || '미지정')}</div>
         <div class="student-badges">${badges.join('')}</div>
       </div>
