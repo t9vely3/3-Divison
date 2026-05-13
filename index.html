@@ -1031,7 +1031,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <h3>
       <span style="display:inline-flex; align-items:center; gap:8px;">
         <svg class="icon icon-lg" viewBox="0 0 24 24" style="color:var(--brand);"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        구글 시트에서 학생 가져오기
+        엑셀/CSV로 학생 가져오기
       </span>
       <button type="button" class="btn btn-outline btn-sm" onclick="toggleImportHelp()" id="importHelpToggle">
         <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -1043,15 +1043,18 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <div id="importHelp" style="display:none; background:var(--brand-soft); border:1px solid var(--brand-border); border-radius:var(--r-md); padding:14px 18px; margin-bottom:14px;">
       <div style="font-size:12px; font-weight:800; color:var(--brand-text); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
         <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-        구글 시트에서 CSV 내보내는 법
+        엑셀 / 구글 시트에서 데이터 가져오는 법
       </div>
-      <ol style="margin:0; padding-left:20px; font-size:12px; line-height:1.9; color:var(--text-secondary);">
-        <li>구글 시트 열기</li>
-        <li>상단 메뉴 <strong style="color:var(--brand-text);">파일 → 다운로드 → 쉼표로 구분된 값(.csv)</strong></li>
-        <li>다운로드된 .csv 파일을 아래에서 선택</li>
-      </ol>
+      <div style="font-size:11.5px; line-height:1.85; color:var(--text-secondary);">
+        <strong style="color:var(--brand-text);">방법 1 — 엑셀 파일 (.xlsx)</strong><br>
+        엑셀 파일을 그대로 아래에서 선택하면 됩니다. 가장 안전한 방법 (한글 깨짐, 줄바꿈 문제 없음).<br><br>
+        <strong style="color:var(--brand-text);">방법 2 — 구글 시트 → 엑셀로 다운로드</strong><br>
+        구글 시트 → <strong>파일 → 다운로드 → Microsoft Excel(.xlsx)</strong> → 다운로드된 파일 선택<br><br>
+        <strong style="color:var(--brand-text);">방법 3 — CSV (인코딩 주의)</strong><br>
+        구글 시트 → <strong>파일 → 다운로드 → 쉼표로 구분된 값(.csv)</strong> → CSV 파일 선택
+      </div>
       <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--brand-border); font-size:11px; color:var(--text-tertiary);">
-        💡 자동으로 처리되는 항목: 생년월일 형식, 배정현황 JSON, 수강료 숫자, 한글 인코딩(UTF-8)<br>
+        💡 자동 처리: 생년월일 형식, 배정현황 JSON, 수강료 숫자, 한글 인코딩<br>
         💡 같은 <strong>원서번호</strong>가 있으면 기존 데이터를 덮어씁니다 (업데이트 효과)
       </div>
     </div>
@@ -1060,9 +1063,9 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <div id="importStep1">
       <div style="border:2px dashed var(--border-strong); border-radius:var(--r-md); padding:32px 20px; text-align:center; background:var(--bg-soft); cursor:pointer; transition:all .15s;" onclick="document.getElementById('csvUpload').click()" id="csvDropZone">
         <svg class="icon" viewBox="0 0 24 24" style="width:42px; height:42px; color:var(--brand); margin-bottom:10px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <div style="font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">CSV 파일을 선택하세요</div>
-        <div style="font-size:11px; color:var(--text-tertiary);">또는 이 영역에 드래그 &amp; 드롭</div>
-        <input type="file" id="csvUpload" accept=".csv,text/csv" style="display:none;" onchange="handleCSVFile(this.files[0])">
+        <div style="font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">엑셀(.xlsx) 또는 CSV 파일을 선택하세요</div>
+        <div style="font-size:11px; color:var(--text-tertiary);">또는 이 영역에 드래그 &amp; 드롭 · .xlsx 권장</div>
+        <input type="file" id="csvUpload" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none;" onchange="handleImportFile(this.files[0])">
       </div>
     </div>
 
@@ -3217,6 +3220,72 @@ async function loadPapaParse() {
   });
 }
 
+// SheetJS (XLSX 파싱용)
+async function loadSheetJS() {
+  if (window.XLSX) return;
+  return new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = res;
+    sc.onerror = rej;
+    document.head.appendChild(sc);
+  });
+}
+
+// 통합 파일 핸들러 - 확장자 보고 CSV/XLSX 자동 분기
+async function handleImportFile(file) {
+  if (!file) return;
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    await handleXLSXFile(file);
+  } else if (name.endsWith('.csv')) {
+    await handleCSVFile(file);
+  } else {
+    customAlert('지원하지 않는 파일 형식입니다.\n.xlsx, .xls, .csv 파일만 업로드 가능합니다.');
+  }
+}
+
+async function handleXLSXFile(file) {
+  if (!file) return;
+  try {
+    await loadSheetJS();
+  } catch (e) {
+    customAlert('엑셀 파서를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.');
+    return;
+  }
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: false });
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      customAlert('엑셀 파일에 시트가 없습니다.');
+      return;
+    }
+    // 첫 시트 자동 선택
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    // 빈 셀은 빈 문자열, raw=false로 날짜·숫자 모두 표시 텍스트로
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false, dateNF: 'yyyy-mm-dd' });
+    if (rows.length === 0) {
+      customAlert('엑셀 시트에 데이터가 없습니다.');
+      return;
+    }
+    // 헤더 정리: 키 trim
+    const cleanedRows = rows.map(r => {
+      const out = {};
+      Object.keys(r).forEach(k => {
+        const ck = String(k).trim();
+        if (ck) out[ck] = r[k];
+      });
+      return out;
+    });
+    // 기존 CSV 처리 함수 재사용
+    processCSVData({ data: cleanedRows, _source: 'xlsx', _sheetName: sheetName });
+  } catch (e) {
+    console.error('[XLSX] 파싱 실패:', e);
+    customAlert('엑셀 파일을 읽는 중 오류가 발생했습니다:\n' + (e.message || ''));
+  }
+}
+
 async function handleCSVFile(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -3292,8 +3361,16 @@ const V3_FIELD_LABELS = {
 };
 
 function processCSVData(result) {
-  const headers = result.meta.fields || [];
   const rows = result.data;
+  // 헤더 추출 - PapaParse면 meta.fields, XLSX면 첫 행 키에서 추출
+  let headers;
+  if (result.meta && result.meta.fields) {
+    headers = result.meta.fields;
+  } else if (rows.length > 0) {
+    headers = Object.keys(rows[0]);
+  } else {
+    headers = [];
+  }
 
   // 컬럼 자동 매칭
   const mapping = {};
@@ -3499,13 +3576,21 @@ function parseAssignedClasses(raw) {
 
 function normalizeAssignments(arr) {
   return arr.filter(a => a && typeof a === 'object').map(a => {
-    // month: "2026년 03월" → "3월"
+    // month: "2026년 03월" → "3월", 연도도 추출
     let month = a.month || '';
+    let year = a.year || '';
+    // "2026년 03월" 같은 형식에서 연도 추출
+    if (!year) {
+      const ym = String(month).match(/(\d{4})\s*년/);
+      if (ym) year = ym[1];
+    }
     const mm = String(month).match(/(\d+)월/);
     if (mm) month = parseInt(mm[1]) + '월';
+    if (!year) year = DEFAULT_YEAR || '2026';
 
     return {
       id: a.id || ('a' + Date.now() + Math.floor(Math.random() * 10000)),
+      year: String(year),
       month: month,
       time: a.time || '',
       subject: a.subject || '',
@@ -3663,7 +3748,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.style.display = el.dataset.context === 'info' ? '' : 'none';
   });
 
-  // CSV 드래그 & 드롭
+  // 파일 드래그 & 드롭 (CSV / XLSX 모두 지원)
   const dz = document.getElementById('csvDropZone');
   if (dz) {
     dz.addEventListener('dragover', e => {
@@ -3681,7 +3766,7 @@ document.addEventListener('DOMContentLoaded', () => {
       dz.style.background = 'var(--bg-soft)';
       dz.style.borderColor = 'var(--border-strong)';
       const file = e.dataTransfer.files[0];
-      if (file) handleCSVFile(file);
+      if (file) handleImportFile(file);
     });
   }
 });
