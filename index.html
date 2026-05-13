@@ -189,6 +189,11 @@ button { outline: none; cursor: pointer; }
 .mentor-list-row .mentor-act-btn:hover { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
 .mentor-list-row .mentor-act-btn.danger:hover { color: var(--danger); border-color: var(--danger-border); background: var(--danger-bg); }
 .mentor-name-edit-input { flex: 1; height: 30px; padding: 0 10px; border: 1px solid var(--brand); border-radius: var(--r-sm); background: var(--bg-surface); font-size: 13px; font-weight: 700; outline: none; box-shadow: var(--shadow-glow); }
+.dept-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 4px 4px 10px; background: var(--bg-surface); border: 1px solid var(--brand-border); color: var(--brand-text); font-size: 11px; font-weight: 700; border-radius: 999px; }
+.dept-chip-x { width: 18px; height: 18px; border: 0; background: var(--brand-soft); color: var(--brand-text); border-radius: 50%; cursor: pointer; font-weight: 800; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+.dept-chip-x:hover { background: var(--danger); color: #fff; }
+.mentor-dept-select { height: 26px; padding: 0 6px; font-size: 11px; font-weight: 700; color: var(--text-secondary); background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--r-sm); outline: none; cursor: pointer; min-width: 90px; }
+.mentor-dept-select:focus { border-color: var(--brand); }
 .mentor-btn { height: 26px; padding: 0; font-size: 11px; font-weight: 600; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); border-radius: var(--r-sm); transition: all .12s; }
 .mentor-btn:hover { background: var(--brand-soft); border-color: var(--brand-border); color: var(--brand-text); }
 .mentor-btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
@@ -201,12 +206,20 @@ button { outline: none; cursor: pointer; }
 .filter-chip input { margin: 0; width: 10px; height: 10px; }
 .filter-chip.unassigned { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-border); }
 .filter-chip.unassigned input { accent-color: var(--danger); }
+.filter-chip.no-mentor { color: #DC2626; background: #FEF2F2; border-color: #FCA5A5; }
+.filter-chip.no-mentor input { accent-color: #DC2626; }
 .filter-chip.leave { color: var(--purple); background: var(--purple-bg); border-color: var(--purple-border); }
 .filter-chip.leave input { accent-color: var(--purple); }
 .filter-chip.completed { color: var(--warning); background: var(--warning-bg); border-color: var(--warning-border); }
 .filter-chip.completed input { accent-color: var(--warning); }
 .filter-chip.refunded { color: var(--gray); background: var(--gray-bg); border-color: var(--gray-border); }
 .filter-chip.refunded input { accent-color: var(--gray); }
+.dept-selector-row { display: flex; align-items: center; gap: 8px; padding: 4px 0 6px; }
+.dept-selector-row select { flex: 1; height: 28px; padding: 0 8px; font-size: 11px; font-weight: 700; color: var(--text-primary); background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--r-sm); outline: none; cursor: pointer; }
+.dept-selector-row select:focus { border-color: var(--brand); }
+/* 멘토 그리드 - 멘토없음 버튼 */
+.mentor-btn.no-mentor-btn { background: linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%); color: #DC2626; border-color: #FCA5A5; }
+.mentor-btn.no-mentor-btn.active { background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); color: #fff; box-shadow: 0 2px 8px rgba(220,38,38,.3); }
 
 .sidebar-actions { padding: 8px 14px; border-top: 1px dashed var(--border); display: flex; justify-content: space-between; align-items: center; }
 .select-all { font-size: 11px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -704,7 +717,14 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     </div>
 
     <div class="sidebar-mentors">
-      <div class="mentor-section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <!-- 부서 선택 (선택한 부서의 멘토만 그리드에 표시) -->
+      <div class="dept-selector-row" id="deptSelectorRow">
+        <span style="font-size:9px; font-weight:800; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.6px;">부서</span>
+        <select id="deptSelector" onchange="onDeptChange()">
+          <option value="">전체 부서</option>
+        </select>
+      </div>
+      <div class="mentor-section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; margin-top:8px;">
         <span style="font-size:9px; font-weight:800; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.6px;">담당 멘토</span>
         <button type="button" class="mentor-manage-btn" onclick="requireManageAuth('mentor')" title="멘토 관리">
           <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -716,6 +736,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <div class="sidebar-filters">
       <div class="filter-row">
         <label class="filter-chip unassigned"><input type="checkbox" id="filterUnassigned" onchange="filterList()"> 미배정</label>
+        <label class="filter-chip no-mentor"><input type="checkbox" id="filterNoMentor" onchange="filterList()"> 멘토없음</label>
         <label class="filter-chip leave"><input type="checkbox" id="filterOnLeave" onchange="filterList()"> 휴학</label>
         <label class="filter-chip completed"><input type="checkbox" id="filterCompleted" onchange="filterList()"> 종강</label>
         <label class="filter-chip refunded"><input type="checkbox" id="filterRefunded" onchange="filterList()"> 환불</label>
@@ -1240,6 +1261,19 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
       </button>
     </div>
 
+    <!-- 부서 관리 -->
+    <div style="margin-bottom:14px; padding:10px 12px; background:var(--bg-soft); border:1px solid var(--border); border-radius:var(--r-md);">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <span style="font-size:11px; font-weight:800; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.5px;">부서 관리</span>
+        <span style="font-size:10px; color:var(--text-tertiary);">총 <strong id="deptCount">0</strong>개</span>
+      </div>
+      <div id="deptChipsContainer" style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px;"></div>
+      <div style="display:flex; gap:4px;">
+        <input type="text" class="form-control" id="newDeptInput" placeholder="새 부서 이름 (예: 4부서, 영어부)" onkeydown="if(event.key==='Enter')addDepartment()" style="height:30px; font-size:11px;" autocomplete="off">
+        <button class="btn btn-outline btn-sm" onclick="addDepartment()" style="height:30px;">+ 추가</button>
+      </div>
+    </div>
+
     <div style="font-size:11px; font-weight:800; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;">현재 멘토 목록 (<span id="mentorCount">0</span>명)</div>
     <div id="mentorListContainer" style="border:1px solid var(--border); border-radius:var(--r-md); max-height:340px; overflow-y:auto;"></div>
 
@@ -1533,6 +1567,30 @@ async function syncMentorsToFirestore() {
   });
 }
 
+// 부서 목록 저장
+async function syncDepartmentsToFirestore() {
+  if (!firebaseDB || !currentUser) return;
+  return enqueueSync('부서 목록 저장', async () => {
+    await firebaseDB.collection('config').doc('departments').set({
+      list: DEPARTMENTS,
+      _updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      _updatedBy: currentUser.email || ''
+    });
+  });
+}
+
+// 멘토→부서 매핑 저장
+async function syncMentorDeptsToFirestore() {
+  if (!firebaseDB || !currentUser) return;
+  return enqueueSync('멘토 부서 저장', async () => {
+    await firebaseDB.collection('config').doc('mentor_depts').set({
+      map: MENTOR_DEPTS,
+      _updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      _updatedBy: currentUser.email || ''
+    });
+  });
+}
+
 // 과목 목록 전체 저장 (단일 문서)
 async function syncSubjectsToFirestore() {
   if (!firebaseDB || !currentUser) return;
@@ -1621,6 +1679,22 @@ async function loadFromFirestore() {
       if (d.data && typeof d.data === 'object') firestoreSubjects = d.data;
     }
 
+    // 5. 부서 목록
+    const deptDoc = await firebaseDB.collection('config').doc('departments').get();
+    let firestoreDepts = null;
+    if (deptDoc.exists) {
+      const d = deptDoc.data();
+      if (Array.isArray(d.list)) firestoreDepts = d.list;
+    }
+
+    // 6. 멘토→부서 매핑
+    const mentorDeptDoc = await firebaseDB.collection('config').doc('mentor_depts').get();
+    let firestoreMentorDepts = null;
+    if (mentorDeptDoc.exists) {
+      const d = mentorDeptDoc.data();
+      if (d.map && typeof d.map === 'object') firestoreMentorDepts = d.map;
+    }
+
     // === 마이그레이션 판단 ===
     // Firestore가 비어있는데 localStorage에 데이터가 있으면 마이그레이션 권유
     const localHasData = globalStudentData && globalStudentData.length > 0;
@@ -1657,6 +1731,14 @@ async function loadFromFirestore() {
     if (firestoreSubjects) {
       COURSE_SUBJECTS = firestoreSubjects;
       saveSubjectsToStorage();
+    }
+    if (firestoreDepts) {
+      DEPARTMENTS = firestoreDepts;
+      saveDepartmentsToStorage();
+    }
+    if (firestoreMentorDepts) {
+      MENTOR_DEPTS = firestoreMentorDepts;
+      saveMentorDeptsToStorage();
     }
 
     // UI 갱신
@@ -1749,6 +1831,12 @@ async function runMigration() {
     // 4. 과목
     await syncSubjectsToFirestore();
 
+    // 5. 부서
+    await syncDepartmentsToFirestore();
+
+    // 6. 멘토→부서 매핑
+    await syncMentorDeptsToFirestore();
+
     showSyncStatus('synced', '마이그레이션 완료');
     showToast(`<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> 마이그레이션 완료: 학생 ${globalStudentData.length}명, 휴지통 ${trash.length}명`, 'success');
   } catch (e) {
@@ -1802,6 +1890,8 @@ const STORAGE_KEY = 'studentMgmt_v3_students';
 const TRASH_KEY = 'studentMgmt_v3_trash';
 const SUBJECTS_KEY = 'studentMgmt_v3_subjects';
 const MENTORS_KEY = 'studentMgmt_v3_mentors';
+const DEPARTMENTS_KEY = 'studentMgmt_v3_departments';
+const MENTOR_DEPTS_KEY = 'studentMgmt_v3_mentor_depts';
 const MIGRATION_DECLINED_KEY = 'studentMgmt_v3_migration_declined';
 const SEEDED_KEY = 'studentMgmt_v3_seeded';
 const ADMIN_PASSWORD = '1234';
@@ -1809,6 +1899,11 @@ const ADMIN_PASSWORD = '1234';
 // 멘토 목록 - 동적 관리
 const DEFAULT_MENTORS = ['김태욱','김민영','최봉경','조용준','심규리','최병훈','김예원','백수하'];
 let MENTORS = [...DEFAULT_MENTORS];
+// 부서 시스템 - 멘토 이름은 그대로 유지, 부서 정보만 별도 매핑
+const DEFAULT_DEPARTMENTS = ['1부서', '2부서', '3부서'];
+let DEPARTMENTS = [...DEFAULT_DEPARTMENTS];
+let MENTOR_DEPTS = {}; // { '김태욱': '1부서', '김민영': '1부서', ... }
+let currentSelectedDept = ''; // '' = 모든 부서
 let editingMentorIdx = -1;
 
 const AVATAR_COLORS = [
@@ -1887,13 +1982,25 @@ function loadFromStorage() {
       const parsed = JSON.parse(mentors);
       if (Array.isArray(parsed) && parsed.length > 0) MENTORS = parsed;
     }
-    // 학사일정 연도 필드 마이그레이션 (기존 데이터에 year 없으면 2026 추가)
+    const depts = localStorage.getItem(DEPARTMENTS_KEY);
+    if (depts) {
+      const parsed = JSON.parse(depts);
+      if (Array.isArray(parsed)) DEPARTMENTS = parsed;
+    }
+    const mentorDepts = localStorage.getItem(MENTOR_DEPTS_KEY);
+    if (mentorDepts) {
+      const parsed = JSON.parse(mentorDepts);
+      if (parsed && typeof parsed === 'object') MENTOR_DEPTS = parsed;
+    }
+    // 학사일정 연도 필드 마이그레이션
     migrateAllStudentsYearField();
   } catch (e) { globalStudentData = []; }
 }
 function saveToStorage() { localStorage.setItem(STORAGE_KEY, JSON.stringify(globalStudentData)); }
 function saveSubjectsToStorage() { localStorage.setItem(SUBJECTS_KEY, JSON.stringify(COURSE_SUBJECTS)); }
 function saveMentorsToStorage() { localStorage.setItem(MENTORS_KEY, JSON.stringify(MENTORS)); }
+function saveDepartmentsToStorage() { localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(DEPARTMENTS)); }
+function saveMentorDeptsToStorage() { localStorage.setItem(MENTOR_DEPTS_KEY, JSON.stringify(MENTOR_DEPTS)); }
 function getTrashedStudents() { try { return JSON.parse(localStorage.getItem(TRASH_KEY) || '[]'); } catch { return []; } }
 function saveTrashedStudents(arr) { localStorage.setItem(TRASH_KEY, JSON.stringify(arr)); }
 
@@ -1901,28 +2008,62 @@ function saveTrashedStudents(arr) { localStorage.setItem(TRASH_KEY, JSON.stringi
    MENTOR MANAGEMENT
 ================================================================= */
 function renderAllMentorUIs() {
+  renderDeptSelector();
   renderMentorGrid();
   renderMentorDatalist();
   renderMentorMasterFilter();
 }
 
+function renderDeptSelector() {
+  const sel = document.getElementById('deptSelector');
+  if (!sel) return;
+  const cur = sel.value || currentSelectedDept;
+  sel.innerHTML = '<option value="">전체 부서</option>' + DEPARTMENTS.map(d => `<option value="${escapeHTML(d)}">${escapeHTML(d)}</option>`).join('');
+  if (DEPARTMENTS.includes(cur)) sel.value = cur;
+  else sel.value = '';
+}
+
+function onDeptChange() {
+  currentSelectedDept = document.getElementById('deptSelector').value;
+  // 선택한 부서에 속하지 않는 멘토가 현재 선택되어 있으면 해제
+  if (currentSelectedMentor && currentSelectedDept) {
+    const mDept = MENTOR_DEPTS[currentSelectedMentor] || '';
+    if (mDept !== currentSelectedDept) currentSelectedMentor = '';
+  }
+  renderMentorGrid();
+  filterList();
+}
+
+function getMentorsInCurrentDept() {
+  if (!currentSelectedDept) return MENTORS;
+  return MENTORS.filter(m => (MENTOR_DEPTS[m] || '') === currentSelectedDept);
+}
+
 function renderMentorGrid() {
   const grid = document.getElementById('mentorGrid');
+  if (!grid) return;
+  const visibleMentors = getMentorsInCurrentDept();
   let html = '';
-  MENTORS.forEach(m => {
+  visibleMentors.forEach(m => {
     const isActive = currentSelectedMentor === m;
     html += `<button class="mentor-btn ${isActive ? 'active' : ''}" onclick="selectMentor('${escapeHTML(m)}', this)">${escapeHTML(m)}</button>`;
   });
   // 마지막 행 채우기 (4의 배수가 아니면 빈 칸 채움)
-  const remainder = MENTORS.length % 4;
+  const remainder = visibleMentors.length % 4;
   if (remainder > 0) {
     for (let i = 0; i < 4 - remainder; i++) {
       html += `<div></div>`;
     }
   }
+  // "멘토 미지정" 보기 (전체 부서일 때만 의미 있음)
+  if (!currentSelectedDept) {
+    const isNoMentorActive = currentSelectedMentor === '__NO_MENTOR__';
+    html += `<button class="mentor-btn no-mentor-btn ${isNoMentorActive ? 'active' : ''}" onclick="selectMentor('__NO_MENTOR__', this)">멘토 미지정</button>`;
+  }
   // "모든 멘토 보기"
   const isAllActive = !currentSelectedMentor;
-  html += `<button class="mentor-btn all ${isAllActive ? 'active' : ''}" onclick="selectMentor('', this)">모든 멘토 보기</button>`;
+  const allLabel = currentSelectedDept ? `${currentSelectedDept} 전체` : '모든 멘토 보기';
+  html += `<button class="mentor-btn all ${isAllActive ? 'active' : ''}" onclick="selectMentor('', this)">${allLabel}</button>`;
   grid.innerHTML = html;
 }
 
@@ -1942,9 +2083,79 @@ function renderMentorMasterFilter() {
 function openMentorManageModal() {
   editingMentorIdx = -1;
   document.getElementById('newMentorInput').value = '';
+  renderDeptChips();
   renderMentorManageList();
   document.getElementById('mentorManageModal').classList.add('show');
   setTimeout(() => document.getElementById('newMentorInput').focus(), 100);
+}
+
+function renderDeptChips() {
+  const c = document.getElementById('deptChipsContainer');
+  if (!c) return;
+  document.getElementById('deptCount').innerText = DEPARTMENTS.length;
+  if (DEPARTMENTS.length === 0) {
+    c.innerHTML = '<span style="font-size:10px; color:var(--text-tertiary);">등록된 부서가 없습니다</span>';
+    return;
+  }
+  c.innerHTML = DEPARTMENTS.map((d, idx) => {
+    const count = MENTORS.filter(m => (MENTOR_DEPTS[m] || '') === d).length;
+    return `<span class="dept-chip">${escapeHTML(d)}<span style="opacity:.6;">${count}</span><button class="dept-chip-x" onclick="deleteDepartment(${idx})" title="부서 삭제">×</button></span>`;
+  }).join('');
+}
+
+function addDepartment() {
+  const inp = document.getElementById('newDeptInput');
+  const name = inp.value.trim();
+  if (!name) { customAlert('부서 이름을 입력해주세요.'); return; }
+  if (DEPARTMENTS.includes(name)) { customAlert('이미 존재하는 부서입니다.'); return; }
+  DEPARTMENTS.push(name);
+  saveDepartmentsToStorage();
+  inp.value = '';
+  renderDeptChips();
+  renderMentorManageList();
+  renderAllMentorUIs();
+  if (typeof syncDepartmentsToFirestore === 'function') syncDepartmentsToFirestore();
+  showToast(`부서 "${name}" 추가됨`, 'success');
+}
+
+function deleteDepartment(idx) {
+  const name = DEPARTMENTS[idx];
+  const affected = MENTORS.filter(m => (MENTOR_DEPTS[m] || '') === name).length;
+  let msg = `'${name}' 부서를 삭제할까요?`;
+  if (affected > 0) msg += `\n\n⚠ 이 부서에 속한 멘토 ${affected}명은 "부서 미지정" 상태가 됩니다.`;
+  customConfirm(msg, ok => {
+    if (!ok) return;
+    DEPARTMENTS.splice(idx, 1);
+    // 그 부서에 속한 멘토들의 부서 매핑 제거
+    Object.keys(MENTOR_DEPTS).forEach(m => {
+      if (MENTOR_DEPTS[m] === name) delete MENTOR_DEPTS[m];
+    });
+    saveDepartmentsToStorage();
+    saveMentorDeptsToStorage();
+    if (currentSelectedDept === name) {
+      currentSelectedDept = '';
+      const sel = document.getElementById('deptSelector');
+      if (sel) sel.value = '';
+    }
+    renderDeptChips();
+    renderMentorManageList();
+    renderAllMentorUIs();
+    filterList();
+    if (typeof syncDepartmentsToFirestore === 'function') syncDepartmentsToFirestore();
+    if (typeof syncMentorDeptsToFirestore === 'function') syncMentorDeptsToFirestore();
+    showToast(`부서 "${name}" 삭제됨`, 'success');
+  });
+}
+
+function changeMentorDept(mentorName, deptName) {
+  if (deptName) MENTOR_DEPTS[mentorName] = deptName;
+  else delete MENTOR_DEPTS[mentorName];
+  saveMentorDeptsToStorage();
+  if (typeof syncMentorDeptsToFirestore === 'function') syncMentorDeptsToFirestore();
+  // 부서 칩의 카운트 갱신 + 사이드바 갱신
+  renderDeptChips();
+  renderAllMentorUIs();
+  filterList();
 }
 
 function renderMentorManageList() {
@@ -1960,11 +2171,16 @@ function renderMentorManageList() {
     const isEditing = editingMentorIdx === idx;
     const grad = avatarGradient(m);
     const totalCount = studentCount + subCount;
+    const curDept = MENTOR_DEPTS[m] || '';
+    // 부서 셀렉터
+    const deptOptions = '<option value="">부서 미지정</option>' + DEPARTMENTS.map(d => `<option value="${escapeHTML(d)}" ${curDept === d ? 'selected' : ''}>${escapeHTML(d)}</option>`).join('');
+    const deptSelector = `<select class="mentor-dept-select" onchange="changeMentorDept('${escapeHTML(m).replace(/'/g, "\\'")}', this.value)" title="이 멘토의 부서">${deptOptions}</select>`;
     return `<div class="mentor-list-row">
       <div class="student-avatar" style="background:linear-gradient(135deg, ${grad[0]} 0%, ${grad[1]} 100%);">${m.charAt(0)}</div>
       ${isEditing
         ? `<input type="text" class="mentor-name-edit-input" id="mentorEditInput_${idx}" value="${escapeHTML(m)}" onkeydown="if(event.key==='Enter')commitMentorRename(${idx}); if(event.key==='Escape'){editingMentorIdx=-1; renderMentorManageList();}">`
         : `<span class="mentor-name-display">${escapeHTML(m)}</span>`}
+      ${deptSelector}
       <span class="mentor-count-badge ${totalCount === 0 ? 'zero' : ''}" title="담당 ${studentCount}명 + 서브 ${subCount}명">담당 ${studentCount}${subCount > 0 ? ` · 서브 ${subCount}` : ''}</span>
       <div class="mentor-actions">
         ${isEditing
@@ -2032,6 +2248,13 @@ function commitMentorRename(idx) {
   saveTrashedStudents(trash);
 
   MENTORS[idx] = newName;
+  // 부서 매핑 이전: oldName → newName
+  if (MENTOR_DEPTS[oldName] !== undefined) {
+    MENTOR_DEPTS[newName] = MENTOR_DEPTS[oldName];
+    delete MENTOR_DEPTS[oldName];
+    saveMentorDeptsToStorage();
+    syncMentorDeptsToFirestore();
+  }
   saveMentorsToStorage();
   saveToStorage();
 
@@ -2088,6 +2311,12 @@ function deleteMentor(idx) {
     saveTrashedStudents(trash);
 
     MENTORS.splice(idx, 1);
+    // 부서 매핑 제거
+    if (MENTOR_DEPTS[name] !== undefined) {
+      delete MENTOR_DEPTS[name];
+      saveMentorDeptsToStorage();
+      syncMentorDeptsToFirestore();
+    }
     saveMentorsToStorage();
     saveToStorage();
 
@@ -2250,13 +2479,25 @@ function selectMentor(name, btn) {
 function filterList() {
   const q = (document.getElementById('searchInput').value || '').toLowerCase().trim();
   const fUn = document.getElementById('filterUnassigned').checked;
+  const fNoMentor = (document.getElementById('filterNoMentor') || {}).checked;
   const fLv = document.getElementById('filterOnLeave').checked;
   const fDn = document.getElementById('filterCompleted').checked;
   const fRf = document.getElementById('filterRefunded').checked;
   const filtered = globalStudentData.filter(s => {
-    if (currentSelectedMentor && s.mentor !== currentSelectedMentor) return false;
+    // 멘토 필터 (특수값: '__NO_MENTOR__' = 멘토 없는 학생만)
+    if (currentSelectedMentor === '__NO_MENTOR__') {
+      if (s.mentor && s.mentor.trim() !== '') return false;
+    } else if (currentSelectedMentor) {
+      if (s.mentor !== currentSelectedMentor) return false;
+    }
+    // 부서 필터 - 학생의 멘토가 그 부서에 속해야 함 (멘토 없는 학생은 자동 제외)
+    if (currentSelectedDept) {
+      if (!s.mentor) return false;
+      if ((MENTOR_DEPTS[s.mentor] || '') !== currentSelectedDept) return false;
+    }
     if (q) { const blob = `${s.name||''} ${s.contact||''} ${s.appNum||''}`.toLowerCase(); if (!blob.includes(q)) return false; }
     if (fUn && (s.assignedClasses && s.assignedClasses.length > 0)) return false;
+    if (fNoMentor && s.mentor && s.mentor.trim() !== '') return false;
     if (fLv && !s.isOnLeave) return false;
     if (fDn && !s.isCompleted) return false;
     if (fRf && !s.isRefunded) return false;
@@ -3478,7 +3719,8 @@ const COLUMN_MAP = {
   '성명': 'name', '이름': 'name', '학생명': 'name', '학생이름': 'name',
   '생년월일': 'birth', '생일': 'birth',
   '담당멘토': 'mentor', '멘토': 'mentor', '담당강사': 'mentor',
-  '서브멘토': 'subMentor', '부멘토': 'subMentor',
+  // 서브멘토는 가져오기에서 무시 (모두 메인 멘토만 등록)
+  // '서브멘토': 'subMentor', '부멘토': 'subMentor',
   '학생연락처': 'contact', '연락처': 'contact', '휴대폰': 'contact', '핸드폰': 'contact', '학생전화': 'contact',
   '비상연락망관계': 'emRel', '비상관계': 'emRel',
   '비상연락망번호': 'emContact', '비상연락처': 'emContact',
