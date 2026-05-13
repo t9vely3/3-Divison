@@ -1120,7 +1120,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
             <!-- 추가 필터 (멘토 + 개강안내) -->
             <div class="monthly-filters" id="monthlyFilters">
               <div class="monthly-filters-label">추가 필터</div>
-              <select class="form-control" id="monthlyMentorFilter" style="width:130px; height:30px; font-size:11px;" onchange="renderMonthlyList()">
+              <select class="form-control" id="monthlyMentorFilter" style="width:130px; height:30px; font-size:11px;" onchange="renderMonthlyView()">
                 <option value="">모든 멘토</option>
               </select>
               <button class="monthly-chip" data-briefing="all" onclick="setMonthlyBriefingFilter('all')">전체</button>
