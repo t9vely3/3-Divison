@@ -575,6 +575,14 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .palette-subj.delete-mode { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); cursor: pointer; }
 .palette-subj.pdf-subj { background: #FFFBEB; color: #92400E; border-color: #FCD34D; }
 .palette-subj.pdf-subj:hover { background: #FEF3C7; color: #78350F; border-color: #F59E0B; }
+.palette-subj.pdf-subj.is-free { background: #EFF6FF; color: #1E40AF; border-color: #BFDBFE; }
+.palette-subj.pdf-subj.is-free:hover { background: #DBEAFE; border-color: #60A5FA; }
+.palette-subj.pdf-subj.is-unmapped { border-style: dashed; opacity: .85; }
+.pdf-free-tag { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #2563EB; color: #fff; font-size: 8px; font-weight: 800; border-radius: 3px; flex-shrink: 0; }
+.pdf-unmapped-tag { font-size: 8px; font-weight: 800; color: #B91C1C; background: #FEE2E2; padding: 1px 4px; border-radius: 3px; margin-left: 3px; }
+.matrix-subj-pill.is-free { background: #EFF6FF; color: #1E40AF; border-color: #BFDBFE; }
+.matrix-subj-pill.is-free.confirmed { background: #DBEAFE; color: #1E3A8A; border-color: #93C5FD; }
+.pill-free-tag { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; background: #2563EB; color: #fff; font-size: 7px; font-weight: 800; border-radius: 2px; flex-shrink: 0; }
 
 .schedule-toggle { display: inline-flex; background: var(--bg-muted); border-radius: var(--r-md); padding: 3px; gap: 2px; margin-bottom: 14px; }
 .st-btn { padding: 6px 14px; font-size: 11px; font-weight: 800; background: transparent; border: none; color: var(--text-tertiary); border-radius: var(--r-sm); }
@@ -1084,6 +1092,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
             <div id="assignmentMatrixContainer"></div>
             <div class="palette-container">
               <div class="palette-actions">
+                <button class="btn btn-outline btn-sm" onclick="openPdfMappingModal()" title="PDF 과목명 매핑 관리">PDF 매핑</button>
                 <button class="btn btn-outline btn-sm" onclick="requireManageAuth('addCat')">+ 탭</button>
                 <button class="btn btn-outline btn-sm" onclick="requireManageAuth('delete')">삭제 모드</button>
                 <button class="btn btn-brand btn-sm" onclick="requireManageAuth('add')">+ 과목</button>
@@ -1244,6 +1253,24 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   </div>
 </div>
 <div id="subjectManageModal" class="modal-overlay" onclick="closeModalIfBg(event,'subjectManageModal')"><div class="modal-content"><h3 id="subjectManageTitle">과목 관리</h3><div id="subjectManageBody"></div><div class="modal-actions"><button class="btn btn-outline" onclick="document.getElementById('subjectManageModal').classList.remove('show')">닫기</button></div></div></div>
+
+<div id="pdfMappingModal" class="modal-overlay" onclick="closeModalIfBg(event,'pdfMappingModal')">
+  <div class="modal-content" style="max-width:560px;">
+    <h3>PDF 과목 매핑 관리</h3>
+    <p style="font-size:11.5px; color:var(--text-secondary); line-height:1.7; margin-bottom:12px;">
+      PDF 영수증에 적힌 과목명이 팔레트 과목명과 다를 때 연결해주세요.<br>
+      예: PDF의 <strong>"AI프롬프트엔지니어링1"</strong> → 팔레트의 <strong>"AI프롬프트1"</strong>
+    </p>
+    <div style="display:flex; gap:6px; margin-bottom:12px;">
+      <input type="text" class="form-control" id="newPdfName" placeholder="PDF에 적힌 과목명" style="flex:1; font-size:12px;" autocomplete="off">
+      <span style="display:flex; align-items:center; color:var(--text-tertiary); font-weight:800;">→</span>
+      <input type="text" class="form-control" id="newPaletteName" placeholder="팔레트 과목명" list="allSubjectsList" style="flex:1; font-size:12px;" autocomplete="off">
+      <button class="btn btn-brand btn-sm" onclick="addPdfMapping()">추가</button>
+    </div>
+    <div id="pdfMappingList" style="border:1px solid var(--border); border-radius:var(--r-md); max-height:300px; overflow-y:auto;"></div>
+    <div class="modal-actions"><button class="btn btn-outline" onclick="document.getElementById('pdfMappingModal').classList.remove('show')">닫기</button></div>
+  </div>
+</div>
 
 <!-- MENTOR MANAGE MODAL -->
 <div id="mentorManageModal" class="modal-overlay" onclick="closeModalIfBg(event,'mentorManageModal')">
@@ -1700,6 +1727,14 @@ async function loadFromFirestore() {
       if (d.map && typeof d.map === 'object') firestoreMentorDepts = d.map;
     }
 
+    // 7. PDF 과목 매핑
+    const pdfMapDoc = await firebaseDB.collection('config').doc('pdf_subject_map').get();
+    let firestorePdfMap = null;
+    if (pdfMapDoc.exists) {
+      const d = pdfMapDoc.data();
+      if (d.map && typeof d.map === 'object') firestorePdfMap = d.map;
+    }
+
     // === 마이그레이션 판단 ===
     // Firestore가 비어있는데 localStorage에 데이터가 있으면 마이그레이션 권유
     const localHasData = globalStudentData && globalStudentData.length > 0;
@@ -1744,6 +1779,10 @@ async function loadFromFirestore() {
     if (firestoreMentorDepts) {
       MENTOR_DEPTS = firestoreMentorDepts;
       saveMentorDeptsToStorage();
+    }
+    if (firestorePdfMap) {
+      PDF_SUBJECT_MAP = firestorePdfMap;
+      savePdfSubjectMapToStorage();
     }
 
     // UI 갱신
@@ -1842,6 +1881,9 @@ async function runMigration() {
     // 6. 멘토→부서 매핑
     await syncMentorDeptsToFirestore();
 
+    // 7. PDF 과목 매핑
+    await syncPdfMapToFirestore();
+
     showSyncStatus('synced', '마이그레이션 완료');
     showToast(`<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> 마이그레이션 완료: 학생 ${globalStudentData.length}명, 휴지통 ${trash.length}명`, 'success');
   } catch (e) {
@@ -1897,6 +1939,7 @@ const SUBJECTS_KEY = 'studentMgmt_v3_subjects';
 const MENTORS_KEY = 'studentMgmt_v3_mentors';
 const DEPARTMENTS_KEY = 'studentMgmt_v3_departments';
 const MENTOR_DEPTS_KEY = 'studentMgmt_v3_mentor_depts';
+const PDF_SUBJECT_MAP_KEY = 'studentMgmt_v3_pdf_subject_map';
 const MIGRATION_DECLINED_KEY = 'studentMgmt_v3_migration_declined';
 const SEEDED_KEY = 'studentMgmt_v3_seeded';
 const ADMIN_PASSWORD = '1234';
@@ -1909,6 +1952,8 @@ const DEFAULT_DEPARTMENTS = ['1부서', '2부서', '3부서'];
 let DEPARTMENTS = [...DEFAULT_DEPARTMENTS];
 let MENTOR_DEPTS = {}; // { '김태욱': '1부서', '김민영': '1부서', ... }
 let currentSelectedDept = ''; // '' = 모든 부서
+// PDF 과목명 → 팔레트 과목명 매핑 테이블 { 'AI프롬프트엔지니어링1': 'AI프롬프트1', ... }
+let PDF_SUBJECT_MAP = {};
 let editingMentorIdx = -1;
 
 const AVATAR_COLORS = [
@@ -1997,6 +2042,11 @@ function loadFromStorage() {
       const parsed = JSON.parse(mentorDepts);
       if (parsed && typeof parsed === 'object') MENTOR_DEPTS = parsed;
     }
+    const pdfMap = localStorage.getItem(PDF_SUBJECT_MAP_KEY);
+    if (pdfMap) {
+      const parsed = JSON.parse(pdfMap);
+      if (parsed && typeof parsed === 'object') PDF_SUBJECT_MAP = parsed;
+    }
     // 학사일정 연도 필드 마이그레이션
     migrateAllStudentsYearField();
   } catch (e) { globalStudentData = []; }
@@ -2006,6 +2056,7 @@ function saveSubjectsToStorage() { localStorage.setItem(SUBJECTS_KEY, JSON.strin
 function saveMentorsToStorage() { localStorage.setItem(MENTORS_KEY, JSON.stringify(MENTORS)); }
 function saveDepartmentsToStorage() { localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(DEPARTMENTS)); }
 function saveMentorDeptsToStorage() { localStorage.setItem(MENTOR_DEPTS_KEY, JSON.stringify(MENTOR_DEPTS)); }
+function savePdfSubjectMapToStorage() { localStorage.setItem(PDF_SUBJECT_MAP_KEY, JSON.stringify(PDF_SUBJECT_MAP)); }
 function getTrashedStudents() { try { return JSON.parse(localStorage.getItem(TRASH_KEY) || '[]'); } catch { return []; } }
 function saveTrashedStudents(arr) { localStorage.setItem(TRASH_KEY, JSON.stringify(arr)); }
 
@@ -3140,9 +3191,10 @@ function renderAssignmentMatrix() {
       }
       let cellHtml = '';
       items.forEach(a => {
-        cellHtml += `<span class="matrix-subj-pill ${a.confirmed ? 'confirmed' : ''}" draggable="true" ondragstart="startMatrixDrag(event, '${m}', '${t}', '${a.subject}', '${a.id}')">
+        const freeTag = a.isFree ? '<span class="pill-free-tag">무</span>' : '';
+        cellHtml += `<span class="matrix-subj-pill ${a.confirmed ? 'confirmed' : ''} ${a.isFree ? 'is-free' : ''}" draggable="true" ondragstart="startMatrixDrag(event, '${m}', '${t}', '${a.subject}', '${a.id}')">
           <input type="checkbox" ${a.confirmed ? 'checked' : ''} onclick="event.stopPropagation(); toggleConfirmMatrixItem('${a.id}', this.checked)">
-          <span class="pill-text">${escapeHTML(a.subject)}</span>
+          ${freeTag}<span class="pill-text">${escapeHTML(a.subject)}</span>
           <span class="del-x" onclick="event.stopPropagation(); deleteSpecificMatrixItem(event, '${a.id}')">×</span>
         </span>`;
       });
@@ -3201,7 +3253,7 @@ function handleDrop(ev, targetMonth, targetTime, el) {
   } else if (data.from === 'palette') {
     const existing = assignedClasses.filter(a => (a.year || DEFAULT_YEAR) === currentYear && a.month === targetMonth && a.time === targetTime);
     if (existing.length >= 2) { customAlert('한 셀에는 최대 2과목까지 배정할 수 있습니다.'); return; }
-    assignedClasses.push({ id: 'a' + Date.now(), year: currentYear, month: targetMonth, time: targetTime, subject: data.subj, confirmed: false, room: 'A' });
+    assignedClasses.push({ id: 'a' + Date.now(), year: currentYear, month: targetMonth, time: targetTime, subject: data.subj, confirmed: false, room: 'A', isFree: !!data.isFree });
   }
   renderAssignmentMatrix();
   updateQuickStats();
@@ -3255,7 +3307,7 @@ function renderPalette() {
   const studentId = document.getElementById('studentId').value;
   if (studentId) {
     const stu = globalStudentData.find(s => s.id === studentId);
-    if (stu && stu.pdfSubjects && stu.pdfSubjects.trim()) {
+    if (stu && parsePdfSubjects(stu.pdfSubjects).length > 0) {
       const pdfTabKey = '__PDF__:' + studentId;
       const isActive = currentPaletteTab === pdfTabKey;
       tabsHtml += `<button type="button" class="palette-tab pdf-tab ${isActive ? 'active' : ''}" onclick="switchPaletteTab('${pdfTabKey}')" title="PDF 추출 과목"><svg class="icon icon-sm" viewBox="0 0 24 24" style="margin-right:3px; vertical-align:-2px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${escapeHTML(stu.name || '학생')}</button>`;
@@ -3275,23 +3327,32 @@ function showPaletteSubjects(c) {
   if (typeof c === 'string' && c.startsWith('__PDF__:')) {
     const studentId = c.split(':')[1];
     const stu = globalStudentData.find(s => s.id === studentId);
-    if (!stu || !stu.pdfSubjects) {
+    if (!stu) {
       cont.innerHTML = '<div class="text-soft" style="padding:8px;">PDF에서 추출된 과목이 없습니다.</div>';
       return;
     }
-    const subs = stu.pdfSubjects.split(',').map(x => x.trim()).filter(Boolean);
+    const subs = parsePdfSubjects(stu.pdfSubjects);
     if (subs.length === 0) {
       cont.innerHTML = '<div class="text-soft" style="padding:8px;">PDF에서 추출된 과목이 없습니다.</div>';
       return;
     }
+    const paletteSubjects = getAllPaletteSubjects();
+    const freeCount = subs.filter(s => s.isFree).length;
     cont.innerHTML = `
-      <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; padding:6px 8px; background:var(--brand-soft); border:1px solid var(--brand-border); border-radius:var(--r-sm); font-size:10.5px;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; padding:6px 8px; background:var(--brand-soft); border:1px solid var(--brand-border); border-radius:var(--r-sm); font-size:10.5px; width:100%;">
         <svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--brand-text); flex-shrink:0;"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
         <span style="color:var(--brand-text); font-weight:700;">${escapeHTML(stu.name)}님의 PDF 추출 과목 ${subs.length}개</span>
+        <span style="color:var(--text-tertiary);">· 무료 ${freeCount}개</span>
         <span style="flex:1;"></span>
         <button class="btn btn-outline btn-sm" onclick="clearPDFSubjects('${studentId}')" style="font-size:10px; padding:2px 8px;">전체 삭제</button>
       </div>
-      ${subs.map(s => `<span class="palette-subj pdf-subj" draggable="true" ondragstart="paletteDragStart(event, '${escapeHTML(s).replace(/'/g, "\\'")}')" oncontextmenu="event.preventDefault(); removePDFSubject('${studentId}', '${escapeHTML(s).replace(/'/g, "\\'")}');">${escapeHTML(s)} <span style="opacity:.5; font-size:9px; margin-left:3px;">PDF</span></span>`).join('')}
+      ${subs.map(s => {
+        const esc = escapeHTML(s.name).replace(/'/g, "\\'");
+        const isUnmapped = !paletteSubjects.includes(s.name);
+        const freeTag = s.isFree ? '<span class="pdf-free-tag">무</span>' : '';
+        const unmappedTag = isUnmapped ? '<span class="pdf-unmapped-tag" title="팔레트에 없는 과목 - PDF 과목 매핑에서 등록하세요">매핑필요</span>' : '';
+        return `<span class="palette-subj pdf-subj ${s.isFree ? 'is-free' : ''} ${isUnmapped ? 'is-unmapped' : ''}" draggable="true" ondragstart="paletteDragStartPdf(event, '${esc}', ${s.isFree})" oncontextmenu="event.preventDefault(); removePDFSubject('${studentId}', '${esc}');" title="우클릭: 제거">${freeTag}${escapeHTML(s.name)}${unmappedTag}</span>`;
+      }).join('')}
     `;
     return;
   }
@@ -3303,21 +3364,25 @@ function showPaletteSubjects(c) {
   ).join('') || '<div class="text-soft" style="padding:8px;">과목이 없습니다.</div>';
 }
 
+// PDF 과목 드래그 시작 - 무료 정보도 전달
+function paletteDragStartPdf(ev, subj, isFree) {
+  ev.dataTransfer.setData('text/plain', JSON.stringify({ from: 'palette', subj, isFree: !!isFree }));
+}
+
 // PDF 과목 1개 제거 (우클릭)
-function removePDFSubject(studentId, subj) {
+function removePDFSubject(studentId, subjName) {
   const stu = globalStudentData.find(s => s.id === studentId);
-  if (!stu || !stu.pdfSubjects) return;
-  const subs = stu.pdfSubjects.split(',').map(x => x.trim()).filter(Boolean).filter(x => x !== subj);
-  stu.pdfSubjects = subs.join(', ');
+  if (!stu) return;
+  const subs = parsePdfSubjects(stu.pdfSubjects).filter(x => x.name !== subjName);
+  stu.pdfSubjects = serializePdfSubjects(subs);
   document.getElementById('pdfSubjects').value = stu.pdfSubjects;
   saveToStorage();
   if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
-  // 다 비었으면 다른 탭으로 자동 전환
   if (subs.length === 0) {
     currentPaletteTab = Object.keys(COURSE_SUBJECTS)[0] || '모션/영상';
   }
   renderPalette();
-  showToast(`"${subj}" 제거됨`);
+  showToast(`"${subjName}" 제거됨`);
 }
 
 // PDF 과목 전체 삭제
@@ -3396,10 +3461,104 @@ function saveCustomCategory() {
 function checkStudentSelected(e) {
   if (!document.getElementById('studentId').value) { e.preventDefault(); customAlert('먼저 좌측에서 학생을 선택해주세요.'); }
 }
+
+/* ============ PDF 과목 매핑 관리 ============ */
+function openPdfMappingModal() {
+  renderPdfMappingList();
+  document.getElementById('pdfMappingModal').classList.add('show');
+  setTimeout(() => document.getElementById('newPdfName').focus(), 100);
+}
+
+function renderPdfMappingList() {
+  const c = document.getElementById('pdfMappingList');
+  const keys = Object.keys(PDF_SUBJECT_MAP);
+  if (keys.length === 0) {
+    c.innerHTML = `<div class="empty-state" style="padding:24px 20px;"><div class="empty-state-icon"><svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>등록된 매핑이 없습니다</div>`;
+    return;
+  }
+  c.innerHTML = keys.map(pdfName => `
+    <div class="mentor-list-row">
+      <span style="flex:1; font-size:12px; font-weight:700; color:var(--text-primary);">${escapeHTML(pdfName)}</span>
+      <svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--text-tertiary); flex-shrink:0;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      <span style="flex:1; font-size:12px; font-weight:800; color:var(--brand-text);">${escapeHTML(PDF_SUBJECT_MAP[pdfName])}</span>
+      <button class="mentor-act-btn" onclick="deletePdfMapping('${escapeHTML(pdfName).replace(/'/g,"\\'")}')" title="삭제">
+        <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+function addPdfMapping() {
+  const pdfName = document.getElementById('newPdfName').value.trim();
+  const paletteName = document.getElementById('newPaletteName').value.trim();
+  if (!pdfName || !paletteName) { customAlert('PDF 과목명과 팔레트 과목명을 모두 입력해주세요.'); return; }
+  PDF_SUBJECT_MAP[pdfName] = paletteName;
+  savePdfSubjectMapToStorage();
+  if (typeof syncPdfMapToFirestore === 'function') syncPdfMapToFirestore();
+  document.getElementById('newPdfName').value = '';
+  document.getElementById('newPaletteName').value = '';
+  renderPdfMappingList();
+  showToast(`매핑 추가: ${pdfName} → ${paletteName}`, 'success');
+}
+
+function deletePdfMapping(pdfName) {
+  customConfirm(`'${pdfName}' 매핑을 삭제할까요?`, ok => {
+    if (!ok) return;
+    delete PDF_SUBJECT_MAP[pdfName];
+    savePdfSubjectMapToStorage();
+    if (typeof syncPdfMapToFirestore === 'function') syncPdfMapToFirestore();
+    renderPdfMappingList();
+    showToast('매핑 삭제됨', 'success');
+  });
+}
+
+async function syncPdfMapToFirestore() {
+  if (!firebaseDB || !currentUser) return;
+  return enqueueSync('PDF 매핑 저장', async () => {
+    await firebaseDB.collection('config').doc('pdf_subject_map').set({
+      map: PDF_SUBJECT_MAP,
+      _updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      _updatedBy: currentUser.email || ''
+    });
+  });
+}
+
+// pdfSubjects 파싱 - 신형(JSON 배열) / 구형(쉼표 문자열) 모두 지원
+// 반환: [{name, isFree}]
+function parsePdfSubjects(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(x => typeof x === 'string' ? { name: x, isFree: false } : { name: x.name || '', isFree: !!x.isFree });
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    // JSON 배열 시도
+    if (trimmed.startsWith('[')) {
+      try {
+        const arr = JSON.parse(trimmed);
+        if (Array.isArray(arr)) return arr.map(x => typeof x === 'string' ? { name: x, isFree: false } : { name: x.name || '', isFree: !!x.isFree });
+      } catch (e) { /* fall through */ }
+    }
+    // 구형: 쉼표 구분 문자열 "유크리1, 유크리2"
+    return trimmed.split(',').map(x => x.trim()).filter(Boolean).map(name => ({ name, isFree: false }));
+  }
+  return [];
+}
+
+// pdfSubjects를 저장용 JSON 문자열로 직렬화
+function serializePdfSubjects(arr) {
+  return JSON.stringify(arr.map(x => ({ name: x.name, isFree: !!x.isFree })));
+}
+
+// 모든 팔레트 과목 이름을 평탄화한 배열
+function getAllPaletteSubjects() {
+  const all = [];
+  Object.values(COURSE_SUBJECTS).forEach(arr => arr.forEach(s => { if (!all.includes(s)) all.push(s); }));
+  return all;
+}
+
 async function handlePDFUpload(input) {
   const file = input.files[0];
   if (!file) return;
-  // 학생 선택 여부 체크
   const studentId = document.getElementById('studentId').value;
   if (!studentId) {
     customAlert('먼저 학생을 선택해주세요.\n(저장된 학생만 PDF 추출이 가능합니다)');
@@ -3408,54 +3567,129 @@ async function handlePDFUpload(input) {
   }
   document.getElementById('pdfLoader').style.display = 'inline';
   if (!window.pdfjsLib) {
-    await new Promise((res, rej) => {
-      const sc = document.createElement('script');
-      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      sc.onload = res; sc.onerror = rej;
-      document.head.appendChild(sc);
-    });
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    try {
+      await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        sc.onload = res; sc.onerror = rej;
+        document.head.appendChild(sc);
+      });
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    } catch (e) {
+      document.getElementById('pdfLoader').style.display = 'none';
+      customAlert('PDF 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.');
+      input.value = '';
+      return;
+    }
   }
   try {
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    const subjects = [];
+
+    // 1) 모든 페이지의 텍스트 아이템을 순서대로 수집
+    let allItems = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const txt = await page.getTextContent();
-      txt.items.forEach(it => {
-        const s = it.str.trim();
-        Object.values(COURSE_SUBJECTS).forEach(arr => {
-          arr.forEach(subj => { if (s.includes(subj) && !subjects.includes(subj)) subjects.push(subj); });
-        });
-      });
+      txt.items.forEach(it => { if (it.str && it.str.trim()) allItems.push(it.str.trim()); });
     }
-    if (subjects.length === 0) {
-      customAlert('PDF에서 과목을 추출하지 못했습니다.\n\n팔레트에 등록된 과목명과 정확히 일치하는 텍스트가 PDF에 없습니다.\n과목 관리에서 과목을 먼저 등록한 후 다시 시도해주세요.');
+
+    // 2) 줄바꿈으로 잘린 과목명 복원을 위해 — 공백 없이 합친 raw 문자열 + 공백 있는 버전 둘 다 준비
+    const joinedNoSpace = allItems.join('').replace(/\s+/g, '');
+    const joinedWithSpace = allItems.join(' ');
+
+    // 3) 팔레트 과목 + 매핑 테이블의 PDF 이름들로 매칭
+    const paletteSubjects = getAllPaletteSubjects();
+    const pdfMapKeys = Object.keys(PDF_SUBJECT_MAP);
+
+    // 후보: 팔레트 과목명 + 매핑 PDF 이름 (긴 것부터 매칭해서 부분일치 오류 방지)
+    const candidates = [];
+    paletteSubjects.forEach(s => candidates.push({ search: s, palette: s, isMapped: false }));
+    pdfMapKeys.forEach(pdfName => {
+      candidates.push({ search: pdfName, palette: PDF_SUBJECT_MAP[pdfName], isMapped: true });
+    });
+    // 긴 이름 우선 정렬 (AI프롬프트엔지니어링1 이 AI 보다 먼저 매칭되도록)
+    candidates.sort((a, b) => b.search.length - a.search.length);
+
+    // 4) 매칭 - 공백제거 텍스트에서 검색
+    const found = []; // { name(팔레트명 or PDF원본명), isMapped, matchedAt(위치) }
+    const usedRanges = [];
+    candidates.forEach(cand => {
+      const key = cand.search.replace(/\s+/g, '');
+      if (!key) return;
+      let idx = joinedNoSpace.indexOf(key);
+      while (idx !== -1) {
+        // 이미 사용된 범위와 겹치지 않으면 채택
+        const overlap = usedRanges.some(r => !(idx + key.length <= r.start || idx >= r.end));
+        if (!overlap) {
+          found.push({
+            name: cand.isMapped ? cand.palette : cand.search,
+            originalPdfName: cand.search,
+            isMapped: cand.isMapped,
+            pos: idx
+          });
+          usedRanges.push({ start: idx, end: idx + key.length });
+        }
+        idx = joinedNoSpace.indexOf(key, idx + 1);
+      }
+    });
+
+    // 5) 위치 순으로 정렬 (PDF에 나온 순서대로)
+    found.sort((a, b) => a.pos - b.pos);
+
+    if (found.length === 0) {
+      customAlert('PDF에서 과목을 추출하지 못했습니다.\n\n팔레트에 등록된 과목명 또는 PDF 매핑 테이블의 이름과 일치하는 텍스트가 없습니다.\n\n과목 관리 또는 PDF 과목 매핑에서 먼저 등록해주세요.');
       return;
     }
 
-    // 학생 데이터에 PDF 과목 저장 (쉼표로 구분된 문자열)
-    const stu = globalStudentData.find(s => s.id === studentId);
-    if (stu) {
-      // 기존 과목과 합치되 중복 제거
-      const existing = stu.pdfSubjects ? stu.pdfSubjects.split(',').map(x => x.trim()).filter(Boolean) : [];
-      const merged = [...existing];
-      subjects.forEach(s => { if (!merged.includes(s)) merged.push(s); });
-      stu.pdfSubjects = merged.join(', ');
-      document.getElementById('pdfSubjects').value = stu.pdfSubjects;
-      saveToStorage();
-      if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
-    }
+    // 6) 금액(무료/유료) 판정 - 각 과목 이름 바로 뒤에 오는 숫자를 찾음
+    //    PDF 구조: 과목명들 나열 후 → 금액들 나열. joinedWithSpace 에서 금액 패턴 추출
+    //    금액 토큰: "0" 또는 "600,000" 같은 형식
+    const moneyTokens = (joinedWithSpace.match(/\b\d{1,3}(?:,\d{3})+\b|\b0\b/g) || []);
+    // moneyTokens를 순서대로 found에 매칭 (found 개수만큼)
+    // 단, PDF 금액 개수가 과목 수보다 많을 수 있음(합계 등) → 앞에서부터 매칭
+    found.forEach((f, i) => {
+      if (i < moneyTokens.length) {
+        const m = moneyTokens[i].replace(/,/g, '');
+        f.isFree = (parseInt(m, 10) === 0);
+      } else {
+        f.isFree = false; // 금액 정보 없으면 유료로 간주
+      }
+    });
 
-    // 학생 이름 탭으로 자동 전환 + 팔레트 갱신
+    // 7) 학생 데이터에 병합 저장 (기존 + 신규, 이름 기준 중복 제거)
+    const stu = globalStudentData.find(s => s.id === studentId);
+    if (!stu) {
+      customAlert('학생 데이터를 찾을 수 없습니다.');
+      return;
+    }
+    const existing = parsePdfSubjects(stu.pdfSubjects);
+    const merged = [...existing];
+    let newCount = 0;
+    let unmappedCount = 0;
+    found.forEach(f => {
+      if (!merged.some(e => e.name === f.name)) {
+        merged.push({ name: f.name, isFree: f.isFree });
+        newCount++;
+        if (!f.isMapped && !paletteSubjects.includes(f.name)) unmappedCount++;
+      }
+    });
+    stu.pdfSubjects = serializePdfSubjects(merged);
+    document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+    saveToStorage();
+    if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+
+    // 8) 학생 이름 탭으로 전환
     currentPaletteTab = '__PDF__:' + studentId;
     renderPalette();
 
-    const newCount = subjects.filter(s => !((stu && stu.pdfSubjects) || '').replace(stu.pdfSubjects || '', stu.pdfSubjects || '')).length;
-    showToast(`<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> PDF에서 ${subjects.length}개 과목 추출 → 우측 학생 탭에 표시 (드래그하여 배치)`, 'success');
+    const freeCount = found.filter(f => f.isFree).length;
+    let msg = `PDF에서 ${found.length}개 과목 추출 (신규 ${newCount}개, 무료 ${freeCount}개)`;
+    if (unmappedCount > 0) msg += ` · 매핑 안 됨 ${unmappedCount}개`;
+    showToast(`<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> ${msg}`, 'success');
   } catch (e) {
-    customAlert('PDF 처리 실패: ' + e.message);
+    console.error('[PDF] 처리 실패:', e);
+    customAlert('PDF 처리 실패: ' + (e.message || ''));
   } finally {
     document.getElementById('pdfLoader').style.display = 'none';
     input.value = '';
