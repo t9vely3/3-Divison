@@ -3598,6 +3598,11 @@ async function handlePDFUpload(input) {
     const joinedNoSpace = allItems.join('').replace(/\s+/g, '');
     const joinedWithSpace = allItems.join(' ');
 
+    // [진단] 콘솔에 추출 원본 출력
+    console.log('[PDF 추출] 텍스트 아이템 수:', allItems.length);
+    console.log('[PDF 추출] 원본 아이템:', allItems);
+    console.log('[PDF 추출] 공백제거 합친 텍스트:', joinedNoSpace);
+
     // 3) 팔레트 과목 + 매핑 테이블의 PDF 이름들로 매칭
     const paletteSubjects = getAllPaletteSubjects();
     const pdfMapKeys = Object.keys(PDF_SUBJECT_MAP);
@@ -3608,18 +3613,16 @@ async function handlePDFUpload(input) {
     pdfMapKeys.forEach(pdfName => {
       candidates.push({ search: pdfName, palette: PDF_SUBJECT_MAP[pdfName], isMapped: true });
     });
-    // 긴 이름 우선 정렬 (AI프롬프트엔지니어링1 이 AI 보다 먼저 매칭되도록)
     candidates.sort((a, b) => b.search.length - a.search.length);
 
     // 4) 매칭 - 공백제거 텍스트에서 검색
-    const found = []; // { name(팔레트명 or PDF원본명), isMapped, matchedAt(위치) }
+    let found = [];
     const usedRanges = [];
     candidates.forEach(cand => {
       const key = cand.search.replace(/\s+/g, '');
       if (!key) return;
       let idx = joinedNoSpace.indexOf(key);
       while (idx !== -1) {
-        // 이미 사용된 범위와 겹치지 않으면 채택
         const overlap = usedRanges.some(r => !(idx + key.length <= r.start || idx >= r.end));
         if (!overlap) {
           found.push({
@@ -3634,11 +3637,78 @@ async function handlePDFUpload(input) {
       }
     });
 
+    console.log('[PDF 추출] 팔레트/매핑 매칭 결과:', found.length, '개', found.map(f => f.name));
+
+    // 4-B) 폴백: 팔레트 매칭이 부족하면 영수증 "수강목록" 표 구조에서 직접 과목명 추출
+    //      SBS 영수증 구조: "수강목록" ... 과목명들 ... 금액들 ... "원서등록 과목수"
+    if (found.length === 0) {
+      console.log('[PDF 추출] 팔레트 매칭 0개 → 영수증 구조 파싱 시도');
+      // "수강목록" 다음 ~ "원서등록" 또는 "과목수" 이전 구간의 아이템만 추출
+      let startIdx = allItems.findIndex(x => x.replace(/\s/g, '').includes('수강목록'));
+      let endIdx = allItems.findIndex(x => x.replace(/\s/g, '').includes('원서등록') || x.replace(/\s/g, '').includes('원수강료'));
+      if (startIdx === -1) startIdx = 0;
+      if (endIdx === -1) endIdx = allItems.length;
+      const tableItems = allItems.slice(startIdx + 1, endIdx);
+      console.log('[PDF 추출] 수강목록 구간 아이템:', tableItems);
+
+      // 과목명 후보: 한글/영문 포함, 숫자만으로 된 것 제외, "과목 및 수강료" 같은 라벨 제외
+      const labelWords = ['과목', '및', '수강료', '수강', '목록', '원서', '등록', '과목수', '납부', '교습비', '영수증', '학생명', '생년월일', '원서번호', '멘토명', '등록일', '개강일', '오후', '오전', '이후부터', '가능'];
+      // 줄바꿈으로 잘린 과목명 합치기: 숫자가 아닌 연속 텍스트를 이어붙임
+      const rawSubjects = [];
+      let buffer = '';
+      tableItems.forEach(item => {
+        const t = item.trim();
+        // 순수 숫자(금액)면 buffer 끊고 무시
+        if (/^[\d,]+$/.test(t)) {
+          if (buffer) { rawSubjects.push(buffer); buffer = ''; }
+          return;
+        }
+        // 라벨 단어면 스킵
+        if (labelWords.some(lw => t === lw)) {
+          if (buffer) { rawSubjects.push(buffer); buffer = ''; }
+          return;
+        }
+        // 날짜/시간 패턴 스킵
+        if (/\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}/.test(t)) {
+          if (buffer) { rawSubjects.push(buffer); buffer = ''; }
+          return;
+        }
+        // 그 외 → 과목명 일부로 간주, buffer에 누적
+        buffer += t;
+        // 끝이 숫자로 끝나면 (예: "유크리1") 과목명 완성으로 간주
+        if (/\d$/.test(t)) {
+          rawSubjects.push(buffer);
+          buffer = '';
+        }
+      });
+      if (buffer) rawSubjects.push(buffer);
+
+      console.log('[PDF 추출] 구조 파싱으로 찾은 과목명:', rawSubjects);
+
+      // 중복 제거하고 found에 추가
+      const seen = new Set();
+      rawSubjects.forEach((subj, i) => {
+        const clean = subj.replace(/\s+/g, '');
+        if (clean && !seen.has(clean) && clean.length >= 2) {
+          seen.add(clean);
+          // 매핑 테이블에 있으면 팔레트명으로 변환
+          const mapped = PDF_SUBJECT_MAP[clean] || PDF_SUBJECT_MAP[subj];
+          found.push({
+            name: mapped || clean,
+            originalPdfName: clean,
+            isMapped: !!mapped,
+            pos: i
+          });
+        }
+      });
+      console.log('[PDF 추출] 구조 파싱 최종:', found.length, '개', found.map(f => f.name));
+    }
+
     // 5) 위치 순으로 정렬 (PDF에 나온 순서대로)
     found.sort((a, b) => a.pos - b.pos);
 
     if (found.length === 0) {
-      customAlert('PDF에서 과목을 추출하지 못했습니다.\n\n팔레트에 등록된 과목명 또는 PDF 매핑 테이블의 이름과 일치하는 텍스트가 없습니다.\n\n과목 관리 또는 PDF 과목 매핑에서 먼저 등록해주세요.');
+      customAlert('PDF에서 과목을 추출하지 못했습니다.\n\nF12 키를 눌러 콘솔(Console) 탭에서 "[PDF 추출]" 로그를 확인해주세요.\n어떤 텍스트가 추출됐는지 보입니다.\n\n그 내용을 알려주시면 정확히 맞춰드릴 수 있습니다.');
       return;
     }
 
@@ -3646,6 +3716,7 @@ async function handlePDFUpload(input) {
     //    PDF 구조: 과목명들 나열 후 → 금액들 나열. joinedWithSpace 에서 금액 패턴 추출
     //    금액 토큰: "0" 또는 "600,000" 같은 형식
     const moneyTokens = (joinedWithSpace.match(/\b\d{1,3}(?:,\d{3})+\b|\b0\b/g) || []);
+    console.log('[PDF 추출] 금액 토큰:', moneyTokens);
     // moneyTokens를 순서대로 found에 매칭 (found 개수만큼)
     // 단, PDF 금액 개수가 과목 수보다 많을 수 있음(합계 등) → 앞에서부터 매칭
     found.forEach((f, i) => {
