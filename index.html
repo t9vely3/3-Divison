@@ -580,6 +580,10 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .palette-subj.pdf-subj.is-unmapped { border-style: dashed; opacity: .85; }
 .pdf-free-tag { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #2563EB; color: #fff; font-size: 8px; font-weight: 800; border-radius: 3px; flex-shrink: 0; }
 .pdf-unmapped-tag { font-size: 8px; font-weight: 800; color: #B91C1C; background: #FEE2E2; padding: 1px 4px; border-radius: 3px; margin-left: 3px; }
+.palette-pick-item { display: inline-block; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; transition: all .12s; user-select: none; }
+.palette-pick-item:hover { border-color: var(--brand-border); color: var(--brand-text); }
+.palette-pick-item.picked { background: var(--brand); color: #fff; border-color: var(--brand); }
+.palette-pick-item.already { background: var(--success-bg); color: var(--success); border-color: var(--success-border); cursor: default; opacity: .7; }
 .matrix-subj-pill.is-free { background: #EFF6FF; color: #1E40AF; border-color: #BFDBFE; }
 .matrix-subj-pill.is-free.confirmed { background: #DBEAFE; color: #1E3A8A; border-color: #93C5FD; }
 .pill-free-tag { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; background: #2563EB; color: #fff; font-size: 7px; font-weight: 800; border-radius: 2px; flex-shrink: 0; }
@@ -3303,14 +3307,15 @@ function renderPalette() {
     `<button type="button" class="palette-tab ${c === currentPaletteTab ? 'active' : ''}" onclick="switchPaletteTab('${escapeHTML(c)}')">${escapeHTML(c)}</button>`
   ).join('');
 
-  // 현재 학생이 선택되어 있고 PDF 과목이 있으면 학생 이름 탭 추가
+  // 현재 학생이 선택되어 있으면 학생 이름 탭 항상 표시 (과목 0개여도 - 직접 추가 가능하도록)
   const studentId = document.getElementById('studentId').value;
   if (studentId) {
     const stu = globalStudentData.find(s => s.id === studentId);
-    if (stu && parsePdfSubjects(stu.pdfSubjects).length > 0) {
+    if (stu) {
+      const cnt = parsePdfSubjects(stu.pdfSubjects).length;
       const pdfTabKey = '__PDF__:' + studentId;
       const isActive = currentPaletteTab === pdfTabKey;
-      tabsHtml += `<button type="button" class="palette-tab pdf-tab ${isActive ? 'active' : ''}" onclick="switchPaletteTab('${pdfTabKey}')" title="PDF 추출 과목"><svg class="icon icon-sm" viewBox="0 0 24 24" style="margin-right:3px; vertical-align:-2px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${escapeHTML(stu.name || '학생')}</button>`;
+      tabsHtml += `<button type="button" class="palette-tab pdf-tab ${isActive ? 'active' : ''}" onclick="switchPaletteTab('${pdfTabKey}')" title="${escapeHTML(stu.name)}님의 과목 (직접 추가/PDF)"><svg class="icon icon-sm" viewBox="0 0 24 24" style="margin-right:3px; vertical-align:-2px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${escapeHTML(stu.name || '학생')}${cnt > 0 ? ` <span style="opacity:.7;">${cnt}</span>` : ''}</button>`;
     }
   }
 
@@ -3323,37 +3328,61 @@ function switchPaletteTab(c) { currentPaletteTab = c; isDeleteMode = false; rend
 function showPaletteSubjects(c) {
   const cont = document.getElementById('paletteContent');
 
-  // 학생 PDF 탭인 경우
+  // 학생 개별 탭인 경우
   if (typeof c === 'string' && c.startsWith('__PDF__:')) {
     const studentId = c.split(':')[1];
     const stu = globalStudentData.find(s => s.id === studentId);
     if (!stu) {
-      cont.innerHTML = '<div class="text-soft" style="padding:8px;">PDF에서 추출된 과목이 없습니다.</div>';
+      cont.innerHTML = '<div class="text-soft" style="padding:8px;">학생을 찾을 수 없습니다.</div>';
       return;
     }
     const subs = parsePdfSubjects(stu.pdfSubjects);
-    if (subs.length === 0) {
-      cont.innerHTML = '<div class="text-soft" style="padding:8px;">PDF에서 추출된 과목이 없습니다.</div>';
-      return;
-    }
     const paletteSubjects = getAllPaletteSubjects();
     const freeCount = subs.filter(s => s.isFree).length;
-    cont.innerHTML = `
-      <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; padding:6px 8px; background:var(--brand-soft); border:1px solid var(--brand-border); border-radius:var(--r-sm); font-size:10.5px; width:100%;">
+    const sid = escapeHTML(studentId).replace(/'/g, "\\'");
+
+    // 헤더
+    let html = `
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; padding:6px 8px; background:var(--brand-soft); border:1px solid var(--brand-border); border-radius:var(--r-sm); font-size:10.5px; width:100%;">
         <svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--brand-text); flex-shrink:0;"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-        <span style="color:var(--brand-text); font-weight:700;">${escapeHTML(stu.name)}님의 PDF 추출 과목 ${subs.length}개</span>
+        <span style="color:var(--brand-text); font-weight:700;">${escapeHTML(stu.name)}님의 과목 ${subs.length}개</span>
         <span style="color:var(--text-tertiary);">· 무료 ${freeCount}개</span>
         <span style="flex:1;"></span>
-        <button class="btn btn-outline btn-sm" onclick="clearPDFSubjects('${studentId}')" style="font-size:10px; padding:2px 8px;">전체 삭제</button>
-      </div>
-      ${subs.map(s => {
+        ${subs.length > 0 ? `<button class="btn btn-outline btn-sm" onclick="clearPDFSubjects('${sid}')" style="font-size:10px; padding:2px 8px;">전체 삭제</button>` : ''}
+      </div>`;
+
+    // 과목 목록
+    if (subs.length > 0) {
+      html += `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; width:100%;">` + subs.map(s => {
         const esc = escapeHTML(s.name).replace(/'/g, "\\'");
         const isUnmapped = !paletteSubjects.includes(s.name);
         const freeTag = s.isFree ? '<span class="pdf-free-tag">무</span>' : '';
-        const unmappedTag = isUnmapped ? '<span class="pdf-unmapped-tag" title="팔레트에 없는 과목 - PDF 과목 매핑에서 등록하세요">매핑필요</span>' : '';
-        return `<span class="palette-subj pdf-subj ${s.isFree ? 'is-free' : ''} ${isUnmapped ? 'is-unmapped' : ''}" draggable="true" ondragstart="paletteDragStartPdf(event, '${esc}', ${s.isFree})" oncontextmenu="event.preventDefault(); removePDFSubject('${studentId}', '${esc}');" title="우클릭: 제거">${freeTag}${escapeHTML(s.name)}${unmappedTag}</span>`;
-      }).join('')}
-    `;
+        const unmappedTag = isUnmapped ? '<span class="pdf-unmapped-tag" title="팔레트에 없는 과목">매핑필요</span>' : '';
+        return `<span class="palette-subj pdf-subj ${s.isFree ? 'is-free' : ''} ${isUnmapped ? 'is-unmapped' : ''}" draggable="true"
+          ondragstart="paletteDragStartPdf(event, '${esc}', ${s.isFree})"
+          onclick="togglePdfSubjectFree('${sid}', '${esc}')"
+          oncontextmenu="event.preventDefault(); removePDFSubject('${sid}', '${esc}');"
+          title="클릭: 유료↔무료 전환 · 우클릭: 제거 · 드래그: 매트릭스 배치">${freeTag}${escapeHTML(s.name)}${unmappedTag}</span>`;
+      }).join('') + `</div>`;
+    } else {
+      html += `<div class="text-soft" style="padding:8px 4px; font-size:11px;">아직 과목이 없습니다. 아래에서 직접 추가하거나 PDF를 업로드하세요.</div>`;
+    }
+
+    // 입력 바: 직접 입력 + 팔레트에서 가져오기
+    html += `
+      <div style="display:flex; gap:4px; align-items:center; padding:8px; background:var(--bg-soft); border:1px solid var(--border); border-radius:var(--r-sm); width:100%; flex-wrap:wrap;">
+        <input type="text" id="pdfManualInput" placeholder="과목명 직접 입력"
+          onkeydown="if(event.key==='Enter')addPdfSubjectManual('${sid}')"
+          style="flex:1; min-width:120px; height:30px; padding:0 8px; font-size:11px; border:1px solid var(--border); border-radius:var(--r-sm); outline:none;" autocomplete="off">
+        <label style="display:flex; align-items:center; gap:3px; font-size:11px; font-weight:700; white-space:nowrap; cursor:pointer;">
+          <input type="checkbox" id="pdfManualFree" style="margin:0; width:13px; height:13px;"> 무료
+        </label>
+        <button class="btn btn-brand btn-sm" onclick="addPdfSubjectManual('${sid}')" style="font-size:11px; padding:5px 10px;">추가</button>
+        <span style="width:1px; height:20px; background:var(--border);"></span>
+        <button class="btn btn-outline btn-sm" onclick="openPalettePickModal('${sid}')" style="font-size:11px; padding:5px 10px; white-space:nowrap;">팔레트에서 가져오기</button>
+      </div>`;
+
+    cont.innerHTML = html;
     return;
   }
 
@@ -3369,6 +3398,42 @@ function paletteDragStartPdf(ev, subj, isFree) {
   ev.dataTransfer.setData('text/plain', JSON.stringify({ from: 'palette', subj, isFree: !!isFree }));
 }
 
+// 학생 탭에 과목 직접 추가
+function addPdfSubjectManual(studentId) {
+  const inp = document.getElementById('pdfManualInput');
+  const freeChk = document.getElementById('pdfManualFree');
+  if (!inp) return;
+  const name = inp.value.trim();
+  if (!name) { customAlert('과목명을 입력해주세요.'); return; }
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  const subs = parsePdfSubjects(stu.pdfSubjects);
+  if (subs.some(s => s.name === name)) { customAlert('이미 추가된 과목입니다.'); return; }
+  subs.push({ name, isFree: freeChk ? freeChk.checked : false });
+  stu.pdfSubjects = serializePdfSubjects(subs);
+  document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+  saveToStorage();
+  if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+  renderPalette();
+  showToast(`"${name}" 추가됨`, 'success');
+}
+
+// 과목 유료↔무료 토글
+function togglePdfSubjectFree(studentId, subjName) {
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  const subs = parsePdfSubjects(stu.pdfSubjects);
+  const target = subs.find(s => s.name === subjName);
+  if (!target) return;
+  target.isFree = !target.isFree;
+  stu.pdfSubjects = serializePdfSubjects(subs);
+  document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+  saveToStorage();
+  if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+  renderPalette();
+  showToast(`"${subjName}" → ${target.isFree ? '무료' : '유료'}`);
+}
+
 // PDF 과목 1개 제거 (우클릭)
 function removePDFSubject(studentId, subjName) {
   const stu = globalStudentData.find(s => s.id === studentId);
@@ -3378,9 +3443,6 @@ function removePDFSubject(studentId, subjName) {
   document.getElementById('pdfSubjects').value = stu.pdfSubjects;
   saveToStorage();
   if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
-  if (subs.length === 0) {
-    currentPaletteTab = Object.keys(COURSE_SUBJECTS)[0] || '모션/영상';
-  }
   renderPalette();
   showToast(`"${subjName}" 제거됨`);
 }
@@ -3389,16 +3451,70 @@ function removePDFSubject(studentId, subjName) {
 function clearPDFSubjects(studentId) {
   const stu = globalStudentData.find(s => s.id === studentId);
   if (!stu) return;
-  customConfirm(`${stu.name}님의 PDF 추출 과목을 모두 삭제할까요?`, ok => {
+  customConfirm(`${stu.name}님의 과목을 모두 삭제할까요?`, ok => {
     if (!ok) return;
     stu.pdfSubjects = '';
     document.getElementById('pdfSubjects').value = '';
     saveToStorage();
     if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
-    currentPaletteTab = Object.keys(COURSE_SUBJECTS)[0] || '모션/영상';
     renderPalette();
-    showToast('PDF 과목 전체 삭제됨', 'success');
+    showToast('과목 전체 삭제됨', 'success');
   });
+}
+
+// 팔레트에서 가져오기 모달
+function openPalettePickModal(studentId) {
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  const existing = parsePdfSubjects(stu.pdfSubjects).map(s => s.name);
+  let bodyHtml = `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">${escapeHTML(stu.name)}님에게 추가할 과목을 선택하세요. 각 과목의 유료/무료를 정할 수 있습니다.</div>`;
+  Object.keys(COURSE_SUBJECTS).forEach(cat => {
+    const subjs = COURSE_SUBJECTS[cat] || [];
+    if (subjs.length === 0) return;
+    bodyHtml += `<div style="margin-bottom:10px;">
+      <div style="font-size:10px; font-weight:800; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;">${escapeHTML(cat)}</div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px;">`;
+    subjs.forEach(subj => {
+      const already = existing.includes(subj);
+      const esc = escapeHTML(subj).replace(/'/g, "\\'");
+      bodyHtml += `<span class="palette-pick-item ${already ? 'already' : ''}" data-subj="${escapeHTML(subj)}" ${already ? '' : `onclick="this.classList.toggle('picked')"`}>${escapeHTML(subj)}${already ? ' ✓' : ''}</span>`;
+    });
+    bodyHtml += `</div></div>`;
+  });
+  bodyHtml += `
+    <div style="display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
+      <label style="display:flex; align-items:center; gap:4px; font-size:12px; font-weight:700; cursor:pointer;">
+        <input type="checkbox" id="palettePickFree" style="margin:0;"> 선택한 과목을 무료로 추가
+      </label>
+      <span style="flex:1;"></span>
+      <button class="btn btn-brand" onclick="confirmPalettePick('${escapeHTML(studentId).replace(/'/g, "\\'")}')">선택 과목 추가</button>
+    </div>`;
+  document.getElementById('subjectManageTitle').innerText = '팔레트에서 과목 가져오기';
+  document.getElementById('subjectManageBody').innerHTML = bodyHtml;
+  document.getElementById('subjectManageModal').classList.add('show');
+}
+
+function confirmPalettePick(studentId) {
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  const picked = [...document.querySelectorAll('.palette-pick-item.picked')].map(el => el.dataset.subj);
+  if (picked.length === 0) { customAlert('추가할 과목을 선택해주세요.'); return; }
+  const isFree = document.getElementById('palettePickFree').checked;
+  const subs = parsePdfSubjects(stu.pdfSubjects);
+  let addCount = 0;
+  picked.forEach(name => {
+    if (!subs.some(s => s.name === name)) {
+      subs.push({ name, isFree });
+      addCount++;
+    }
+  });
+  stu.pdfSubjects = serializePdfSubjects(subs);
+  document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+  saveToStorage();
+  if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+  document.getElementById('subjectManageModal').classList.remove('show');
+  renderPalette();
+  showToast(`${addCount}개 과목 추가됨${isFree ? ' (무료)' : ''}`, 'success');
 }
 function paletteDragStart(ev, subj) { ev.dataTransfer.setData('text/plain', JSON.stringify({ from: 'palette', subj })); }
 function deletePaletteSubject(cat, subj) {
@@ -3610,20 +3726,30 @@ async function handlePDFUpload(input) {
     let startIdx = allItems.findIndex(x => x.replace(/\s/g, '').includes('수강목록'));
     let endIdx = allItems.findIndex(x => {
       const c = x.replace(/\s/g, '');
-      return c.includes('원서등록') || c.includes('원수강료') || c.includes('납부수강료');
+      return c.includes('원서등록') || c.includes('원수강료') || c.includes('납부수강료') || c.includes('과목수') || c.includes('원서수강료');
     });
     if (startIdx === -1) startIdx = -1; // 못 찾으면 처음부터
     if (endIdx === -1) endIdx = allItems.length;
     const tableItems = allItems.slice(startIdx + 1, endIdx);
     console.log('[PDF 추출] 수강목록 구간 (startIdx=' + startIdx + ', endIdx=' + endIdx + '):', tableItems);
 
-    const labelWords = ['과목', '및', '수강료', '수강', '목록', '원서', '등록', '과목수', '납부', '교습비', '영수증', '학생명', '생년월일', '원서번호', '멘토명', '등록일', '개강일', '오후', '오전', '이후부터', '가능', '원'];
+    const labelWords = ['과목', '및', '수강료', '수강', '목록', '원서', '등록', '과목수', '납부', '교습비', '영수증', '학생명', '생년월일', '원서번호', '멘토명', '등록일', '개강일', '오후', '오전', '이후부터', '가능', '원', '합계', '총액', '소계'];
     // 줄바꿈으로 잘린 과목명 합치기: 숫자가 아닌 연속 텍스트를 이어붙임
     const rawSubjects = [];
     let buffer = '';
     tableItems.forEach(item => {
       const t = item.trim();
       if (/^[\d,]+$/.test(t)) { // 순수 숫자(금액)
+        if (buffer) { rawSubjects.push(buffer); buffer = ''; }
+        return;
+      }
+      // "5과목", "10과목" 같은 개수 표기 제외
+      if (/^\d+\s*과목$/.test(t)) {
+        if (buffer) { rawSubjects.push(buffer); buffer = ''; }
+        return;
+      }
+      // 금액+원 ("900,000원") 제외
+      if (/^[\d,]+\s*원$/.test(t)) {
         if (buffer) { rawSubjects.push(buffer); buffer = ''; }
         return;
       }
@@ -3642,12 +3768,19 @@ async function handlePDFUpload(input) {
       }
     });
     if (buffer) rawSubjects.push(buffer);
-    console.log('[PDF 추출] 구조 파싱 과목명:', rawSubjects);
+    // 최종 필터: "N과목" 패턴이 합쳐진 경우도 제거
+    const cleanedSubjects = rawSubjects.filter(s => {
+      const c = s.replace(/\s/g, '');
+      if (/^\d+과목$/.test(c)) return false;
+      if (/^[\d,]+원?$/.test(c)) return false;
+      return c.length >= 2;
+    });
+    console.log('[PDF 추출] 구조 파싱 과목명:', cleanedSubjects);
 
     // found 구성 - 구조 파싱 결과 기준
     let found = [];
     const seen = new Set();
-    rawSubjects.forEach((subj, i) => {
+    cleanedSubjects.forEach((subj, i) => {
       const clean = subj.replace(/\s+/g, '');
       if (!clean || clean.length < 2 || seen.has(clean)) return;
       seen.add(clean);
