@@ -565,11 +565,16 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .palette-tab { padding: 6px 12px; font-size: 11px; font-weight: 700; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text-secondary); cursor: pointer; transition: all .12s; }
 .palette-tab:hover { background: var(--brand-soft); color: var(--brand-text); border-color: var(--brand-border); }
 .palette-tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+.palette-tab.pdf-tab { background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); color: #92400E; border-color: #FCD34D; }
+.palette-tab.pdf-tab:hover { background: linear-gradient(135deg, #FDE68A 0%, #FCD34D 100%); color: #78350F; }
+.palette-tab.pdf-tab.active { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #fff; border-color: #D97706; box-shadow: 0 2px 8px rgba(217,119,6,.25); }
 .palette-actions { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; z-index: 2; }
 .palette-content { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 60px; }
 .palette-subj { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; font-size: 11px; font-weight: 700; background: var(--bg-muted); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--r-sm); cursor: grab; user-select: none; }
 .palette-subj:hover { background: var(--brand-soft); color: var(--brand-text); border-color: var(--brand-border); }
 .palette-subj.delete-mode { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); cursor: pointer; }
+.palette-subj.pdf-subj { background: #FFFBEB; color: #92400E; border-color: #FCD34D; }
+.palette-subj.pdf-subj:hover { background: #FEF3C7; color: #78350F; border-color: #F59E0B; }
 
 .schedule-toggle { display: inline-flex; background: var(--bg-muted); border-radius: var(--r-md); padding: 3px; gap: 2px; margin-bottom: 14px; }
 .st-btn { padding: 6px 14px; font-size: 11px; font-weight: 800; background: transparent; border: none; color: var(--text-tertiary); border-radius: var(--r-sm); }
@@ -2818,6 +2823,10 @@ function doResetForm() {
   document.getElementById('studentId').value = '';
   document.getElementById('originalMentor').value = '';
   document.getElementById('pdfSubjects').value = '';
+  // PDF 탭이 활성화되어 있었다면 일반 탭으로
+  if (typeof currentPaletteTab === 'string' && currentPaletteTab.startsWith('__PDF__:')) {
+    currentPaletteTab = Object.keys(COURSE_SUBJECTS)[0] || '모션/영상';
+  }
   document.getElementById('totalTuition').value = '';
   document.getElementById('calcDiscWon').innerText = '';
   document.getElementById('profileAvatar').innerText = '+';
@@ -2865,6 +2874,15 @@ function doLoadStudentDetail(id) {
     const el = document.getElementById(k);
     if (el) el.value = s[k] != null ? s[k] : '';
   });
+  document.getElementById('pdfSubjects').value = s.pdfSubjects || '';
+
+  // 다른 학생의 PDF 탭이 활성화되어 있었다면 일반 탭으로
+  if (typeof currentPaletteTab === 'string' && currentPaletteTab.startsWith('__PDF__:')) {
+    const prevId = currentPaletteTab.split(':')[1];
+    if (prevId !== s.id) {
+      currentPaletteTab = Object.keys(COURSE_SUBJECTS)[0] || '모션/영상';
+    }
+  }
   document.getElementById('requiresCare').checked = !!s.requiresCare;
   document.getElementById('isOnLeave').checked = !!s.isOnLeave;
   document.getElementById('isCompleted').checked = !!s.isCompleted;
@@ -2927,6 +2945,7 @@ function submitForm() {
     emRel: document.getElementById('emRel').value,
     emContact: document.getElementById('emContact').value.trim(),
     assignedClasses: assignedClasses.map(a => ({...a})),
+    pdfSubjects: document.getElementById('pdfSubjects').value || '',
     updatedAt: new Date().toISOString()
   };
   const idx = globalStudentData.findIndex(s => s.id === id);
@@ -3228,18 +3247,93 @@ function saveAssignModal() {
 
 function renderPalette() {
   const tabs = document.getElementById('paletteTabs');
-  tabs.innerHTML = Object.keys(COURSE_SUBJECTS).map(c =>
+  let tabsHtml = Object.keys(COURSE_SUBJECTS).map(c =>
     `<button type="button" class="palette-tab ${c === currentPaletteTab ? 'active' : ''}" onclick="switchPaletteTab('${escapeHTML(c)}')">${escapeHTML(c)}</button>`
   ).join('');
+
+  // 현재 학생이 선택되어 있고 PDF 과목이 있으면 학생 이름 탭 추가
+  const studentId = document.getElementById('studentId').value;
+  if (studentId) {
+    const stu = globalStudentData.find(s => s.id === studentId);
+    if (stu && stu.pdfSubjects && stu.pdfSubjects.trim()) {
+      const pdfTabKey = '__PDF__:' + studentId;
+      const isActive = currentPaletteTab === pdfTabKey;
+      tabsHtml += `<button type="button" class="palette-tab pdf-tab ${isActive ? 'active' : ''}" onclick="switchPaletteTab('${pdfTabKey}')" title="PDF 추출 과목"><svg class="icon icon-sm" viewBox="0 0 24 24" style="margin-right:3px; vertical-align:-2px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${escapeHTML(stu.name || '학생')}</button>`;
+    }
+  }
+
+  tabs.innerHTML = tabsHtml;
   showPaletteSubjects(currentPaletteTab);
 }
+
 function switchPaletteTab(c) { currentPaletteTab = c; isDeleteMode = false; renderPalette(); }
+
 function showPaletteSubjects(c) {
   const cont = document.getElementById('paletteContent');
+
+  // 학생 PDF 탭인 경우
+  if (typeof c === 'string' && c.startsWith('__PDF__:')) {
+    const studentId = c.split(':')[1];
+    const stu = globalStudentData.find(s => s.id === studentId);
+    if (!stu || !stu.pdfSubjects) {
+      cont.innerHTML = '<div class="text-soft" style="padding:8px;">PDF에서 추출된 과목이 없습니다.</div>';
+      return;
+    }
+    const subs = stu.pdfSubjects.split(',').map(x => x.trim()).filter(Boolean);
+    if (subs.length === 0) {
+      cont.innerHTML = '<div class="text-soft" style="padding:8px;">PDF에서 추출된 과목이 없습니다.</div>';
+      return;
+    }
+    cont.innerHTML = `
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; padding:6px 8px; background:var(--brand-soft); border:1px solid var(--brand-border); border-radius:var(--r-sm); font-size:10.5px;">
+        <svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--brand-text); flex-shrink:0;"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        <span style="color:var(--brand-text); font-weight:700;">${escapeHTML(stu.name)}님의 PDF 추출 과목 ${subs.length}개</span>
+        <span style="flex:1;"></span>
+        <button class="btn btn-outline btn-sm" onclick="clearPDFSubjects('${studentId}')" style="font-size:10px; padding:2px 8px;">전체 삭제</button>
+      </div>
+      ${subs.map(s => `<span class="palette-subj pdf-subj" draggable="true" ondragstart="paletteDragStart(event, '${escapeHTML(s).replace(/'/g, "\\'")}')" oncontextmenu="event.preventDefault(); removePDFSubject('${studentId}', '${escapeHTML(s).replace(/'/g, "\\'")}');">${escapeHTML(s)} <span style="opacity:.5; font-size:9px; margin-left:3px;">PDF</span></span>`).join('')}
+    `;
+    return;
+  }
+
+  // 일반 카테고리
   const subs = COURSE_SUBJECTS[c] || [];
   cont.innerHTML = subs.map(s =>
     `<span class="palette-subj ${isDeleteMode ? 'delete-mode' : ''}" draggable="${!isDeleteMode}" ondragstart="paletteDragStart(event, '${escapeHTML(s)}')" onclick="${isDeleteMode ? `deletePaletteSubject('${escapeHTML(c)}', '${escapeHTML(s)}')` : ''}">${escapeHTML(s)} ${isDeleteMode ? '×' : ''}</span>`
   ).join('') || '<div class="text-soft" style="padding:8px;">과목이 없습니다.</div>';
+}
+
+// PDF 과목 1개 제거 (우클릭)
+function removePDFSubject(studentId, subj) {
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu || !stu.pdfSubjects) return;
+  const subs = stu.pdfSubjects.split(',').map(x => x.trim()).filter(Boolean).filter(x => x !== subj);
+  stu.pdfSubjects = subs.join(', ');
+  document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+  saveToStorage();
+  if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+  // 다 비었으면 다른 탭으로 자동 전환
+  if (subs.length === 0) {
+    currentPaletteTab = Object.keys(COURSE_SUBJECTS)[0] || '모션/영상';
+  }
+  renderPalette();
+  showToast(`"${subj}" 제거됨`);
+}
+
+// PDF 과목 전체 삭제
+function clearPDFSubjects(studentId) {
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  customConfirm(`${stu.name}님의 PDF 추출 과목을 모두 삭제할까요?`, ok => {
+    if (!ok) return;
+    stu.pdfSubjects = '';
+    document.getElementById('pdfSubjects').value = '';
+    saveToStorage();
+    if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+    currentPaletteTab = Object.keys(COURSE_SUBJECTS)[0] || '모션/영상';
+    renderPalette();
+    showToast('PDF 과목 전체 삭제됨', 'success');
+  });
 }
 function paletteDragStart(ev, subj) { ev.dataTransfer.setData('text/plain', JSON.stringify({ from: 'palette', subj })); }
 function deletePaletteSubject(cat, subj) {
@@ -3305,6 +3399,13 @@ function checkStudentSelected(e) {
 async function handlePDFUpload(input) {
   const file = input.files[0];
   if (!file) return;
+  // 학생 선택 여부 체크
+  const studentId = document.getElementById('studentId').value;
+  if (!studentId) {
+    customAlert('먼저 학생을 선택해주세요.\n(저장된 학생만 PDF 추출이 가능합니다)');
+    input.value = '';
+    return;
+  }
   document.getElementById('pdfLoader').style.display = 'inline';
   if (!window.pdfjsLib) {
     await new Promise((res, rej) => {
@@ -3331,51 +3432,28 @@ async function handlePDFUpload(input) {
     }
     if (subjects.length === 0) {
       customAlert('PDF에서 과목을 추출하지 못했습니다.\n\n팔레트에 등록된 과목명과 정확히 일치하는 텍스트가 PDF에 없습니다.\n과목 관리에서 과목을 먼저 등록한 후 다시 시도해주세요.');
-    } else {
-      // 추출된 과목들을 매트릭스에 자동 추가
-      // 빈 셀을 찾아서 차례로 배치
-      const months = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
-      const placed = [];
-      const skipped = [];
-
-      pushHistory(); // undo 가능하게
-
-      const currentYear = getCurrentAssignYear();
-      for (const subj of subjects) {
-        // 이미 배정된 과목이면 건너뜀 (현재 연도 기준)
-        if (assignedClasses.some(a => (a.year || DEFAULT_YEAR) === currentYear && a.subject === subj)) {
-          skipped.push(subj);
-          continue;
-        }
-        // 빈 셀 찾기 (현재 연도 기준)
-        let placed_one = false;
-        outer: for (const m of months) {
-          for (const t of ALL_TIMES_LIST) {
-            const existing = assignedClasses.filter(a => (a.year || DEFAULT_YEAR) === currentYear && a.month === m && a.time === t);
-            if (existing.length < 2) {
-              assignedClasses.push({
-                id: 'a' + Date.now() + Math.floor(Math.random() * 10000),
-                year: currentYear, month: m, time: t, subject: subj,
-                confirmed: false, room: 'A'
-              });
-              placed.push(`${m} ${t}: ${subj}`);
-              placed_one = true;
-              break outer;
-            }
-          }
-        }
-        if (!placed_one) skipped.push(subj + '(빈 셀 없음)');
-      }
-
-      renderAssignmentMatrix();
-      updateQuickStats();
-      markDirty();
-
-      let msg = `PDF에서 ${subjects.length}개 과목을 추출했습니다.\n\n✓ 매트릭스에 자동 배치: ${placed.length}개\n`;
-      if (skipped.length > 0) msg += `⚠ 건너뜀 (이미 배정됨): ${skipped.length}개\n  ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? ' ...' : ''}\n`;
-      msg += `\n드래그로 원하는 시간/월로 이동하세요.\n저장하지 않으면 변경사항이 사라집니다.`;
-      customAlert(msg);
+      return;
     }
+
+    // 학생 데이터에 PDF 과목 저장 (쉼표로 구분된 문자열)
+    const stu = globalStudentData.find(s => s.id === studentId);
+    if (stu) {
+      // 기존 과목과 합치되 중복 제거
+      const existing = stu.pdfSubjects ? stu.pdfSubjects.split(',').map(x => x.trim()).filter(Boolean) : [];
+      const merged = [...existing];
+      subjects.forEach(s => { if (!merged.includes(s)) merged.push(s); });
+      stu.pdfSubjects = merged.join(', ');
+      document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+      saveToStorage();
+      if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+    }
+
+    // 학생 이름 탭으로 자동 전환 + 팔레트 갱신
+    currentPaletteTab = '__PDF__:' + studentId;
+    renderPalette();
+
+    const newCount = subjects.filter(s => !((stu && stu.pdfSubjects) || '').replace(stu.pdfSubjects || '', stu.pdfSubjects || '')).length;
+    showToast(`<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> PDF에서 ${subjects.length}개 과목 추출 → 우측 학생 탭에 표시 (드래그하여 배치)`, 'success');
   } catch (e) {
     customAlert('PDF 처리 실패: ' + e.message);
   } finally {
