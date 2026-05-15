@@ -573,17 +573,15 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .palette-subj { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; font-size: 11px; font-weight: 700; background: var(--bg-muted); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--r-sm); cursor: grab; user-select: none; }
 .palette-subj:hover { background: var(--brand-soft); color: var(--brand-text); border-color: var(--brand-border); }
 .palette-subj.delete-mode { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); cursor: pointer; }
-.palette-subj.pdf-subj { background: #FFFBEB; color: #92400E; border-color: #FCD34D; }
+.palette-subj.pdf-subj { background: #FFFBEB; color: #92400E; border-color: #FCD34D; position: relative; padding-right: 22px; }
 .palette-subj.pdf-subj:hover { background: #FEF3C7; color: #78350F; border-color: #F59E0B; }
 .palette-subj.pdf-subj.is-free { background: #EFF6FF; color: #1E40AF; border-color: #BFDBFE; }
 .palette-subj.pdf-subj.is-free:hover { background: #DBEAFE; border-color: #60A5FA; }
 .palette-subj.pdf-subj.is-unmapped { border-style: dashed; opacity: .85; }
-/* 매트릭스에 배정되어 소모된 과목 - 회색 처리 */
-.palette-subj.pdf-subj.is-consumed { background: var(--bg-muted) !important; color: var(--text-soft) !important; border-color: var(--border) !important; cursor: not-allowed; opacity: .6; }
-.palette-subj.pdf-subj.is-consumed:hover { background: var(--bg-muted) !important; color: var(--text-soft) !important; border-color: var(--border) !important; }
-.palette-subj.pdf-subj.is-consumed .pdf-free-tag { background: var(--text-soft); }
-.pdf-subj-x { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 2px; border-radius: 3px; font-size: 12px; font-weight: 800; line-height: 1; color: inherit; opacity: .55; cursor: pointer; flex-shrink: 0; transition: all .12s; }
-.pdf-subj-x:hover { opacity: 1; background: var(--danger); color: #fff; }
+.palette-subj.pdf-subj.is-used { background: #F3F4F6; color: #9CA3AF; border-color: #D1D5DB; cursor: default; padding-right: 10px; text-decoration: line-through; }
+.palette-subj.pdf-subj.is-used:hover { background: #F3F4F6; color: #9CA3AF; border-color: #D1D5DB; }
+.pdf-x-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; border-radius: 50%; background: rgba(0,0,0,.08); color: inherit; font-size: 11px; font-weight: 800; line-height: 1; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; }
+.pdf-x-btn:hover { background: #DC2626; color: #fff; }
 .pdf-free-tag { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #2563EB; color: #fff; font-size: 8px; font-weight: 800; border-radius: 3px; flex-shrink: 0; }
 .pdf-unmapped-tag { font-size: 8px; font-weight: 800; color: #B91C1C; background: #FEE2E2; padding: 1px 4px; border-radius: 3px; margin-left: 3px; }
 .palette-pick-item { display: inline-block; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; transition: all .12s; user-select: none; }
@@ -3263,11 +3261,25 @@ function handleDrop(ev, targetMonth, targetTime, el) {
   } else if (data.from === 'palette') {
     const existing = assignedClasses.filter(a => (a.year || DEFAULT_YEAR) === currentYear && a.month === targetMonth && a.time === targetTime);
     if (existing.length >= 2) { customAlert('한 셀에는 최대 2과목까지 배정할 수 있습니다.'); return; }
-    assignedClasses.push({ id: 'a' + Date.now(), year: currentYear, month: targetMonth, time: targetTime, subject: data.subj, confirmed: false, room: 'A', isFree: !!data.isFree, sourcePdfId: data.sourcePdfId || null });
+    assignedClasses.push({
+      id: 'a' + Date.now(),
+      year: currentYear,
+      month: targetMonth,
+      time: targetTime,
+      subject: data.subj,
+      confirmed: false,
+      room: 'A',
+      isFree: !!data.isFree,
+      sourcePdfId: data.sourcePdfId || null
+    });
   }
   renderAssignmentMatrix();
   updateQuickStats();
   markDirty();
+  // 학생 탭이 활성화되어 있으면 다시 렌더 (소모 상태 갱신)
+  if (typeof currentPaletteTab === 'string' && currentPaletteTab.startsWith('__PDF__:')) {
+    renderPalette();
+  }
 }
 function deleteSpecificMatrixItem(event, id) {
   event.stopPropagation();
@@ -3276,6 +3288,10 @@ function deleteSpecificMatrixItem(event, id) {
   renderAssignmentMatrix();
   updateQuickStats();
   markDirty();
+  // 학생 탭이 활성화되어 있으면 다시 렌더 (소모 상태 복귀)
+  if (typeof currentPaletteTab === 'string' && currentPaletteTab.startsWith('__PDF__:')) {
+    renderPalette();
+  }
 }
 function toggleConfirmMatrixItem(id, checked) {
   const a = assignedClasses.find(x => x.id === id);
@@ -3359,22 +3375,28 @@ function showPaletteSubjects(c) {
 
     // 과목 목록
     if (subs.length > 0) {
+      // 매트릭스에 이미 배정된 sourcePdfId 모음 - 소모 표시용
+      const usedIds = new Set(
+        (assignedClasses || [])
+          .filter(a => a.sourcePdfId)
+          .map(a => a.sourcePdfId)
+      );
+
       html += `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; width:100%;">` + subs.map(s => {
-        const esc = escapeHTML(s.name).replace(/'/g, "\\'");
+        const sidEsc = escapeHTML(s.id).replace(/'/g, "\\'");
         const isUnmapped = !paletteSubjects.includes(s.name);
-        const consumed = isPdfSubjectConsumed(s.id);
+        const isUsed = usedIds.has(s.id);
         const freeTag = s.isFree ? '<span class="pdf-free-tag">무</span>' : '';
         const unmappedTag = isUnmapped ? '<span class="pdf-unmapped-tag" title="팔레트에 없는 과목">매핑필요</span>' : '';
-        if (consumed) {
-          // 매트릭스에 배정됨 → 회색, 드래그/클릭 불가. 매트릭스에서 빼면 자동 복귀.
-          return `<span class="palette-subj pdf-subj is-consumed ${s.isFree ? 'is-free' : ''}" draggable="false"
-            title="매트릭스에 배정된 과목입니다. 매트릭스에서 빼면 다시 사용할 수 있습니다.">${freeTag}${escapeHTML(s.name)}</span>`;
-        }
-        return `<span class="palette-subj pdf-subj ${s.isFree ? 'is-free' : ''} ${isUnmapped ? 'is-unmapped' : ''}" draggable="true"
-          ondragstart="paletteDragStartPdf(event, '${s.id}', '${esc}', ${s.isFree})"
-          onclick="togglePdfSubjectFree('${sid}', '${s.id}')"
-          oncontextmenu="event.preventDefault(); removePDFSubject('${sid}', '${s.id}');"
-          title="클릭: 유료↔무료 전환 · 우클릭/X: 제거 · 드래그: 매트릭스 배치">${freeTag}${escapeHTML(s.name)}${unmappedTag}<span class="pdf-subj-x" onclick="event.stopPropagation(); removePDFSubject('${sid}', '${s.id}');" title="이 과목 삭제">×</span></span>`;
+        const xBtn = isUsed
+          ? '' // 소모 상태에서는 X 안 보임 (매트릭스에서 빼면 자동 복귀)
+          : `<span class="pdf-x-btn" onclick="event.stopPropagation(); removePDFSubjectById('${sid}', '${sidEsc}')" title="삭제">×</span>`;
+
+        return `<span class="palette-subj pdf-subj ${s.isFree ? 'is-free' : ''} ${isUnmapped ? 'is-unmapped' : ''} ${isUsed ? 'is-used' : ''}"
+          ${isUsed ? '' : 'draggable="true"'}
+          ${isUsed ? '' : `ondragstart="paletteDragStartPdfById(event, '${sidEsc}')"`}
+          ${isUsed ? '' : `onclick="togglePdfSubjectFreeById('${sid}', '${sidEsc}')"`}
+          title="${isUsed ? '매트릭스에 이미 배정됨 (셀에서 X로 빼면 다시 활성화)' : '클릭: 유료↔무료 전환 · 드래그: 매트릭스 배치 · X 버튼: 삭제'}">${freeTag}${escapeHTML(s.name)}${unmappedTag}${xBtn}</span>`;
       }).join('') + `</div>`;
     } else {
       html += `<div class="text-soft" style="padding:8px 4px; font-size:11px;">아직 과목이 없습니다. 아래에서 직접 추가하거나 PDF를 업로드하세요.</div>`;
@@ -3405,12 +3427,28 @@ function showPaletteSubjects(c) {
   ).join('') || '<div class="text-soft" style="padding:8px;">과목이 없습니다.</div>';
 }
 
-// PDF 과목 드래그 시작 - 무료 정보 + 출처 과목 id 전달
-function paletteDragStartPdf(ev, pdfId, subj, isFree) {
-  ev.dataTransfer.setData('text/plain', JSON.stringify({ from: 'palette', subj, isFree: !!isFree, sourcePdfId: pdfId }));
+// PDF 과목 드래그 시작 - 무료 정보도 전달
+function paletteDragStartPdf(ev, subj, isFree) {
+  ev.dataTransfer.setData('text/plain', JSON.stringify({ from: 'palette', subj, isFree: !!isFree }));
 }
 
-// 학생 탭에 과목 직접 추가 (같은 이름 중복 허용 - 각각 고유 id)
+// id 기반 드래그 - 학생 탭에서 매트릭스로 드래그 시 sourcePdfId 함께 전달 (소모 추적용)
+function paletteDragStartPdfById(ev, subjId) {
+  const studentId = document.getElementById('studentId').value;
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  const subs = parsePdfSubjects(stu.pdfSubjects);
+  const target = subs.find(s => s.id === subjId);
+  if (!target) return;
+  ev.dataTransfer.setData('text/plain', JSON.stringify({
+    from: 'palette',
+    subj: target.name,
+    isFree: !!target.isFree,
+    sourcePdfId: target.id
+  }));
+}
+
+// 학생 탭에 과목 직접 추가
 function addPdfSubjectManual(studentId) {
   const inp = document.getElementById('pdfManualInput');
   const freeChk = document.getElementById('pdfManualFree');
@@ -3420,21 +3458,44 @@ function addPdfSubjectManual(studentId) {
   const stu = globalStudentData.find(s => s.id === studentId);
   if (!stu) return;
   const subs = parsePdfSubjects(stu.pdfSubjects);
-  subs.push({ id: genPdfId(), name, isFree: freeChk ? freeChk.checked : false });
+  // 중복 허용 — 같은 이름이어도 추가 가능
+  subs.push({
+    id: 's' + Date.now() + Math.floor(Math.random() * 100000),
+    name,
+    isFree: freeChk ? freeChk.checked : false
+  });
+  stu.pdfSubjects = serializePdfSubjects(subs);
+  document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+  saveToStorage();
+  if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+  inp.value = '';
+  if (freeChk) freeChk.checked = false;
+  renderPalette();
+  showToast(`"${name}" 추가됨`, 'success');
+}
+
+// 과목 유료↔무료 토글 (이름 기반 - 첫 번째 항목)
+function togglePdfSubjectFree(studentId, subjName) {
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  const subs = parsePdfSubjects(stu.pdfSubjects);
+  const target = subs.find(s => s.name === subjName);
+  if (!target) return;
+  target.isFree = !target.isFree;
   stu.pdfSubjects = serializePdfSubjects(subs);
   document.getElementById('pdfSubjects').value = stu.pdfSubjects;
   saveToStorage();
   if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
   renderPalette();
-  showToast(`"${name}" 추가됨`, 'success');
+  showToast(`"${subjName}" → ${target.isFree ? '무료' : '유료'}`);
 }
 
-// 과목 유료↔무료 토글 (id 기준)
-function togglePdfSubjectFree(studentId, pdfId) {
+// id 기반 유료/무료 토글 - 중복 과목 각각 독립 관리
+function togglePdfSubjectFreeById(studentId, subjId) {
   const stu = globalStudentData.find(s => s.id === studentId);
   if (!stu) return;
   const subs = parsePdfSubjects(stu.pdfSubjects);
-  const target = subs.find(s => s.id === pdfId);
+  const target = subs.find(s => s.id === subjId);
   if (!target) return;
   target.isFree = !target.isFree;
   stu.pdfSubjects = serializePdfSubjects(subs);
@@ -3445,20 +3506,37 @@ function togglePdfSubjectFree(studentId, pdfId) {
   showToast(`"${target.name}" → ${target.isFree ? '무료' : '유료'}`);
 }
 
-// PDF 과목 1개 제거 (id 기준 - X 버튼 / 우클릭)
-function removePDFSubject(studentId, pdfId) {
+// PDF 과목 1개 제거 (우클릭 - 이름 기반 첫 번째 항목)
+function removePDFSubject(studentId, subjName) {
   const stu = globalStudentData.find(s => s.id === studentId);
   if (!stu) return;
   const subs = parsePdfSubjects(stu.pdfSubjects);
-  const target = subs.find(x => x.id === pdfId);
-  if (!target) return;
-  const remaining = subs.filter(x => x.id !== pdfId);
-  stu.pdfSubjects = serializePdfSubjects(remaining);
+  const idx = subs.findIndex(x => x.name === subjName);
+  if (idx === -1) return;
+  subs.splice(idx, 1);
+  stu.pdfSubjects = serializePdfSubjects(subs);
   document.getElementById('pdfSubjects').value = stu.pdfSubjects;
   saveToStorage();
   if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
   renderPalette();
-  showToast(`"${target.name}" 제거됨`);
+  showToast(`"${subjName}" 제거됨`);
+}
+
+// id 기반 개별 삭제 - 중복 과목 정확히 1개만
+function removePDFSubjectById(studentId, subjId) {
+  const stu = globalStudentData.find(s => s.id === studentId);
+  if (!stu) return;
+  const subs = parsePdfSubjects(stu.pdfSubjects);
+  const target = subs.find(s => s.id === subjId);
+  if (!target) return;
+  const name = target.name;
+  const filtered = subs.filter(s => s.id !== subjId);
+  stu.pdfSubjects = serializePdfSubjects(filtered);
+  document.getElementById('pdfSubjects').value = stu.pdfSubjects;
+  saveToStorage();
+  if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
+  renderPalette();
+  showToast(`"${name}" 삭제됨`);
 }
 
 // PDF 과목 전체 삭제
@@ -3480,8 +3558,11 @@ function clearPDFSubjects(studentId) {
 function openPalettePickModal(studentId) {
   const stu = globalStudentData.find(s => s.id === studentId);
   if (!stu) return;
-  const existing = parsePdfSubjects(stu.pdfSubjects).map(s => s.name);
-  let bodyHtml = `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">${escapeHTML(stu.name)}님에게 추가할 과목을 선택하세요. 각 과목의 유료/무료를 정할 수 있습니다.</div>`;
+  const existingCount = {};
+  parsePdfSubjects(stu.pdfSubjects).forEach(s => {
+    existingCount[s.name] = (existingCount[s.name] || 0) + 1;
+  });
+  let bodyHtml = `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">${escapeHTML(stu.name)}님에게 추가할 과목을 선택하세요. 각 과목의 유료/무료를 정할 수 있습니다. <strong style="color:var(--brand-text);">이미 있어도 추가 가능합니다 (중복 허용)</strong></div>`;
   Object.keys(COURSE_SUBJECTS).forEach(cat => {
     const subjs = COURSE_SUBJECTS[cat] || [];
     if (subjs.length === 0) return;
@@ -3489,9 +3570,8 @@ function openPalettePickModal(studentId) {
       <div style="font-size:10px; font-weight:800; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;">${escapeHTML(cat)}</div>
       <div style="display:flex; flex-wrap:wrap; gap:4px;">`;
     subjs.forEach(subj => {
-      const already = existing.includes(subj);
-      const esc = escapeHTML(subj).replace(/'/g, "\\'");
-      bodyHtml += `<span class="palette-pick-item ${already ? 'already' : ''}" data-subj="${escapeHTML(subj)}" ${already ? '' : `onclick="this.classList.toggle('picked')"`}>${escapeHTML(subj)}${already ? ' ✓' : ''}</span>`;
+      const cnt = existingCount[subj] || 0;
+      bodyHtml += `<span class="palette-pick-item ${cnt > 0 ? 'has-existing' : ''}" data-subj="${escapeHTML(subj)}" onclick="this.classList.toggle('picked')">${escapeHTML(subj)}${cnt > 0 ? ` <span style="opacity:.6; font-size:9px;">×${cnt}</span>` : ''}</span>`;
     });
     bodyHtml += `</div></div>`;
   });
@@ -3515,12 +3595,13 @@ function confirmPalettePick(studentId) {
   if (picked.length === 0) { customAlert('추가할 과목을 선택해주세요.'); return; }
   const isFree = document.getElementById('palettePickFree').checked;
   const subs = parsePdfSubjects(stu.pdfSubjects);
-  let addCount = 0;
+  // 중복 허용 - 같은 이름이어도 모두 추가
   picked.forEach(name => {
-    if (!subs.some(s => s.name === name)) {
-      subs.push({ id: genPdfId(), name, isFree });
-      addCount++;
-    }
+    subs.push({
+      id: 's' + Date.now() + Math.floor(Math.random() * 100000),
+      name,
+      isFree
+    });
   });
   stu.pdfSubjects = serializePdfSubjects(subs);
   document.getElementById('pdfSubjects').value = stu.pdfSubjects;
@@ -3528,7 +3609,7 @@ function confirmPalettePick(studentId) {
   if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
   document.getElementById('subjectManageModal').classList.remove('show');
   renderPalette();
-  showToast(`${addCount}개 과목 추가됨${isFree ? ' (무료)' : ''}`, 'success');
+  showToast(`${picked.length}개 과목 추가됨${isFree ? ' (무료)' : ''}`, 'success');
 }
 function paletteDragStart(ev, subj) { ev.dataTransfer.setData('text/plain', JSON.stringify({ from: 'palette', subj })); }
 function deletePaletteSubject(cat, subj) {
@@ -3653,47 +3734,37 @@ async function syncPdfMapToFirestore() {
   });
 }
 
-// 과목 고유 id 생성기 (같은 이름 여러 개 구분용)
-let _pdfIdCounter = 0;
-function genPdfId() {
-  _pdfIdCounter++;
-  return 'ps' + Date.now().toString(36) + _pdfIdCounter.toString(36);
-}
-
-// pdfSubjects 파싱 - 신형(JSON 배열) / 구형(쉼표 문자열) 모두 지원
-// 반환: [{id, name, isFree}] — id가 없으면 자동 부여 (기존 데이터 호환)
+// pdfSubjects 파싱 - 신형(JSON 배열 with id) / 구형(쉼표 문자열) 모두 지원
+// 반환: [{id, name, isFree}]
 function parsePdfSubjects(raw) {
-  const norm = x => {
-    if (typeof x === 'string') return { id: genPdfId(), name: x, isFree: false };
-    return { id: x.id || genPdfId(), name: x.name || '', isFree: !!x.isFree };
-  };
+  function ensureId(obj) {
+    if (!obj.id) obj.id = 's' + Date.now() + Math.floor(Math.random() * 100000);
+    return obj;
+  }
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(norm);
+  if (Array.isArray(raw)) return raw.map(x => typeof x === 'string'
+    ? ensureId({ name: x, isFree: false })
+    : ensureId({ id: x.id, name: x.name || '', isFree: !!x.isFree }));
   if (typeof raw === 'string') {
     const trimmed = raw.trim();
     if (!trimmed) return [];
-    // JSON 배열 시도
     if (trimmed.startsWith('[')) {
       try {
         const arr = JSON.parse(trimmed);
-        if (Array.isArray(arr)) return arr.map(norm);
+        if (Array.isArray(arr)) return arr.map(x => typeof x === 'string'
+          ? ensureId({ name: x, isFree: false })
+          : ensureId({ id: x.id, name: x.name || '', isFree: !!x.isFree }));
       } catch (e) { /* fall through */ }
     }
     // 구형: 쉼표 구분 문자열 "유크리1, 유크리2"
-    return trimmed.split(',').map(x => x.trim()).filter(Boolean).map(name => ({ id: genPdfId(), name, isFree: false }));
+    return trimmed.split(',').map(x => x.trim()).filter(Boolean).map(name => ensureId({ name, isFree: false }));
   }
   return [];
 }
 
-// pdfSubjects를 저장용 JSON 문자열로 직렬화 (id 없으면 부여)
+// pdfSubjects를 저장용 JSON 문자열로 직렬화
 function serializePdfSubjects(arr) {
-  return JSON.stringify(arr.map(x => ({ id: x.id || genPdfId(), name: x.name, isFree: !!x.isFree })));
-}
-
-// 해당 과목 id가 매트릭스에 이미 배정되어 "소모"되었는지 확인
-function isPdfSubjectConsumed(pdfId) {
-  if (!pdfId) return false;
-  return assignedClasses.some(a => a.sourcePdfId === pdfId);
+  return JSON.stringify(arr.map(x => ({ id: x.id, name: x.name, isFree: !!x.isFree })));
 }
 
 // 모든 팔레트 과목 이름을 평탄화한 배열
@@ -3733,155 +3804,211 @@ async function handlePDFUpload(input) {
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
 
-    // 1) 모든 페이지의 텍스트 아이템을 순서대로 수집
-    let allItems = [];
+    // ===== 좌표 기반 추출 =====
+    // PDF.js의 textContent items는 transform=[a,b,c,d,e,f] 형태로 좌표 정보를 줌
+    // e = x좌표, f = y좌표
+    let allRichItems = []; // {text, x, y, w}
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const txt = await page.getTextContent();
-      txt.items.forEach(it => { if (it.str && it.str.trim()) allItems.push(it.str.trim()); });
+      txt.items.forEach(it => {
+        if (!it.str || !it.str.trim()) return;
+        const tr = it.transform || [1, 0, 0, 1, 0, 0];
+        allRichItems.push({
+          text: it.str.trim(),
+          x: tr[4],
+          y: tr[5],
+          w: it.width || 0
+        });
+      });
     }
 
-    // 2) 줄바꿈으로 잘린 과목명 복원을 위해 — 공백 없이 합친 raw 문자열 + 공백 있는 버전 둘 다 준비
-    const joinedNoSpace = allItems.join('').replace(/\s+/g, '');
-    const joinedWithSpace = allItems.join(' ');
-
-    // [진단] 콘솔에 추출 원본 출력
-    console.log('[PDF 추출] 텍스트 아이템 수:', allItems.length);
-    console.log('[PDF 추출] 원본 아이템:', allItems);
-    console.log('[PDF 추출] 공백제거 합친 텍스트:', joinedNoSpace);
-
-    const paletteSubjects = getAllPaletteSubjects();
-
-    // ===== 영수증 "수강목록" 표 구조에서 과목명 직접 추출 (메인 방식) =====
-    // SBS 영수증 구조: "수강목록" ... 과목명들 ... 금액들 ... "원서등록 과목수"
-    let startIdx = allItems.findIndex(x => x.replace(/\s/g, '').includes('수강목록'));
-    let endIdx = allItems.findIndex(x => {
-      const c = x.replace(/\s/g, '');
-      return c.includes('원서등록') || c.includes('원수강료') || c.includes('납부수강료') || c.includes('과목수') || c.includes('원서수강료');
+    // y좌표가 비슷한 것끼리 묶어서 행(row) 구성
+    // PDF 좌표계: y가 클수록 위쪽. 내림차순 정렬 후 그룹화
+    allRichItems.sort((a, b) => b.y - a.y || a.x - b.x);
+    const ROW_TOLERANCE = 3; // y좌표 차이가 이 이하면 같은 행
+    const rows = [];
+    let currentRow = null;
+    let currentY = null;
+    allRichItems.forEach(it => {
+      if (currentY === null || Math.abs(it.y - currentY) > ROW_TOLERANCE) {
+        currentRow = { y: it.y, cells: [] };
+        rows.push(currentRow);
+        currentY = it.y;
+      }
+      currentRow.cells.push(it);
     });
-    if (startIdx === -1) startIdx = -1; // 못 찾으면 처음부터
-    if (endIdx === -1) endIdx = allItems.length;
-    const tableItems = allItems.slice(startIdx + 1, endIdx);
-    console.log('[PDF 추출] 수강목록 구간 (startIdx=' + startIdx + ', endIdx=' + endIdx + '):', tableItems);
+    // 각 행의 셀들을 x좌표 순으로 정렬
+    rows.forEach(r => r.cells.sort((a, b) => a.x - b.x));
 
-    const labelWords = ['과목', '및', '수강료', '수강', '목록', '원서', '등록', '과목수', '납부', '교습비', '영수증', '학생명', '생년월일', '원서번호', '멘토명', '등록일', '개강일', '오후', '오전', '이후부터', '가능', '원', '합계', '총액', '소계'];
-    // 줄바꿈으로 잘린 과목명 합치기: 숫자가 아닌 연속 텍스트를 이어붙임
-    const rawSubjects = [];
-    let buffer = '';
-    tableItems.forEach(item => {
-      const t = item.trim();
-      if (/^[\d,]+$/.test(t)) { // 순수 숫자(금액)
-        if (buffer) { rawSubjects.push(buffer); buffer = ''; }
-        return;
-      }
-      // "5과목", "10과목" 같은 개수 표기 제외
-      if (/^\d+\s*과목$/.test(t)) {
-        if (buffer) { rawSubjects.push(buffer); buffer = ''; }
-        return;
-      }
-      // 금액+원 ("900,000원") 제외
-      if (/^[\d,]+\s*원$/.test(t)) {
-        if (buffer) { rawSubjects.push(buffer); buffer = ''; }
-        return;
-      }
-      if (labelWords.some(lw => t === lw)) {
-        if (buffer) { rawSubjects.push(buffer); buffer = ''; }
-        return;
-      }
-      if (/\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}/.test(t)) {
-        if (buffer) { rawSubjects.push(buffer); buffer = ''; }
-        return;
-      }
-      buffer += t;
-      if (/\d$/.test(t)) { // 숫자로 끝나면 과목명 완성 (유크리1, AI프롬프트엔지니어링1)
-        rawSubjects.push(buffer);
-        buffer = '';
-      }
-    });
-    if (buffer) rawSubjects.push(buffer);
-    // 최종 필터: "N과목" 패턴이 합쳐진 경우도 제거
-    const cleanedSubjects = rawSubjects.filter(s => {
-      const c = s.replace(/\s/g, '');
-      if (/^\d+과목$/.test(c)) return false;
-      if (/^[\d,]+원?$/.test(c)) return false;
-      return c.length >= 2;
-    });
-    console.log('[PDF 추출] 구조 파싱 과목명:', cleanedSubjects);
-
-    // found 구성 - 구조 파싱 결과 기준
-    let found = [];
-    const seen = new Set();
-    cleanedSubjects.forEach((subj, i) => {
-      const clean = subj.replace(/\s+/g, '');
-      if (!clean || clean.length < 2 || seen.has(clean)) return;
-      seen.add(clean);
-      // 매핑 테이블 우선 → 팔레트 정확매칭 → 원본명
-      let finalName = clean;
-      let isMapped = false;
-      if (PDF_SUBJECT_MAP[clean]) {
-        finalName = PDF_SUBJECT_MAP[clean];
-        isMapped = true;
-      } else if (PDF_SUBJECT_MAP[subj]) {
-        finalName = PDF_SUBJECT_MAP[subj];
-        isMapped = true;
-      } else {
-        // 팔레트에 정확히 같은 이름 있으면 그대로
-        const exact = paletteSubjects.find(p => p.replace(/\s+/g, '') === clean);
-        if (exact) finalName = exact;
-      }
-      found.push({ name: finalName, originalPdfName: clean, isMapped, pos: i });
-    });
-
-    // 폴백: 구조 파싱이 완전 실패하면 (수강목록 라벨 없는 PDF 등) → 팔레트 전체 텍스트 매칭
-    if (found.length === 0) {
-      console.log('[PDF 추출] 구조 파싱 0개 → 팔레트 전체 텍스트 매칭 시도');
-      const candidates = [];
-      paletteSubjects.forEach(s => candidates.push({ search: s, palette: s, isMapped: false }));
-      Object.keys(PDF_SUBJECT_MAP).forEach(pdfName => {
-        candidates.push({ search: pdfName, palette: PDF_SUBJECT_MAP[pdfName], isMapped: true });
-      });
-      candidates.sort((a, b) => b.search.length - a.search.length);
-      const usedRanges = [];
-      candidates.forEach(cand => {
-        const key = cand.search.replace(/\s+/g, '');
-        if (!key) return;
-        let idx = joinedNoSpace.indexOf(key);
-        while (idx !== -1) {
-          const overlap = usedRanges.some(r => !(idx + key.length <= r.start || idx >= r.end));
-          if (!overlap) {
-            found.push({ name: cand.isMapped ? cand.palette : cand.search, originalPdfName: cand.search, isMapped: cand.isMapped, pos: idx });
-            usedRanges.push({ start: idx, end: idx + key.length });
-          }
-          idx = joinedNoSpace.indexOf(key, idx + 1);
+    // 같은 행 내에서 x좌표가 매우 가까운 셀들은 한 셀로 병합 (PDF 토큰이 잘려있을 때)
+    const X_MERGE_TOLERANCE = 3;
+    rows.forEach(r => {
+      const merged = [];
+      r.cells.forEach(c => {
+        const last = merged[merged.length - 1];
+        if (last && c.x - (last.x + (last.w || 0)) < X_MERGE_TOLERANCE) {
+          last.text += c.text;
+          last.w = (c.x + (c.w || 0)) - last.x;
+        } else {
+          merged.push({ ...c });
         }
       });
-      found.sort((a, b) => a.pos - b.pos);
+      r.cells = merged;
+    });
+
+    // [진단]
+    console.log('[PDF 추출] 행 수:', rows.length);
+    rows.forEach((r, i) => {
+      console.log(`  [행${i}] y=${r.y.toFixed(1)}:`, r.cells.map(c => `"${c.text}"(x=${c.x.toFixed(1)})`).join(' | '));
+    });
+
+    // 수강목록 시작 행 찾기
+    let startRowIdx = rows.findIndex(r => r.cells.some(c => c.text.replace(/\s/g, '').includes('수강목록')));
+    let endRowIdx = rows.findIndex(r => r.cells.some(c => {
+      const t = c.text.replace(/\s/g, '');
+      return t.includes('원서등록') || t.includes('원수강료') || t.includes('과목수') || /^\d+과목$/.test(t);
+    }));
+    if (startRowIdx === -1) startRowIdx = -1;
+    if (endRowIdx === -1) endRowIdx = rows.length;
+    const tableRows = rows.slice(startRowIdx + 1, endRowIdx);
+    console.log('[PDF 추출] 수강목록 표 행 수:', tableRows.length);
+
+    // 각 행을 분류: "과목 행" vs "금액 행"
+    // 금액 행 = 모든 셀이 숫자/콤마 또는 "0"으로만 구성
+    function isMoneyCell(text) {
+      const t = text.replace(/[\s,]/g, '');
+      return /^\d+$/.test(t);
+    }
+    function isLabelCell(text) {
+      const t = text.replace(/\s/g, '');
+      // "과목", "및", "수강료" 같은 단독 라벨
+      const labels = ['과목', '및', '수강료', '수강', '목록', '원서', '등록', '과목수', '납부', '교습비', '영수증', '학생명', '생년월일', '원서번호', '멘토명', '등록일', '개강일', '오후', '오전', '이후부터', '가능', '원', '합계', '총액', '소계'];
+      return labels.includes(t);
+    }
+    function isDateOrTime(text) {
+      return /\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}/.test(text);
     }
 
-    console.log('[PDF 추출] 최종 found:', found.length, '개', found.map(f => f.name));
+    // 과목 행/금액 행 추출 - 라벨 셀 제외하고 본 셀로만 판정
+    const subjectRows = []; // {cells: [{text, x}]}
+    const moneyRows = [];   // 같은 구조
+    tableRows.forEach(r => {
+      // 본 셀: 라벨/날짜 아님
+      const realCells = r.cells.filter(c => !isLabelCell(c.text) && !isDateOrTime(c.text));
+      if (realCells.length === 0) return;
+      // 모두 금액 셀이면 금액 행
+      if (realCells.every(c => isMoneyCell(c.text))) {
+        moneyRows.push({ y: r.y, cells: realCells });
+      } else {
+        // 과목 행 - 단, 금액이 섞여있어도 과목명이 하나라도 있으면 과목 행으로
+        // 금액 셀은 제외하고 과목명만 추출
+        const subjectCells = realCells.filter(c => !isMoneyCell(c.text));
+        // "17 과목" 같은 패턴 제외
+        const cleanedCells = subjectCells.filter(c => !/^\d+\s*과목$/.test(c.text.replace(/\s/g, '')));
+        if (cleanedCells.length > 0) subjectRows.push({ y: r.y, cells: cleanedCells });
+      }
+    });
+
+    console.log('[PDF 추출] 과목 행 수:', subjectRows.length, '금액 행 수:', moneyRows.length);
+
+    // 줄바꿈 처리: 한 셀이 두 줄로 잘렸을 때 합치기
+    // 같은 x좌표를 가진 두 과목 행이 연속해 있고, 두 번째 행의 셀 수가 첫 번째보다 적으면
+    // 첫 번째 행의 같은 x좌표 셀에 합쳐줌
+    for (let i = subjectRows.length - 1; i > 0; i--) {
+      const curr = subjectRows[i];
+      const prev = subjectRows[i - 1];
+      // 두 행 사이에 금액 행이 있으면 건너뜀 (다른 표 행)
+      const hasMoneyBetween = moneyRows.some(mr => mr.y < prev.y && mr.y > curr.y);
+      if (hasMoneyBetween) continue;
+      // curr의 셀이 prev보다 적고, x좌표가 가까운 셀이 있으면 합침
+      if (curr.cells.length < prev.cells.length) {
+        curr.cells.forEach(cc => {
+          // prev에서 가장 x좌표가 가까운 셀 찾기
+          let nearest = null;
+          let nearestDist = Infinity;
+          prev.cells.forEach(pc => {
+            const d = Math.abs(pc.x - cc.x);
+            if (d < nearestDist) { nearestDist = d; nearest = pc; }
+          });
+          if (nearest && nearestDist < 30) {
+            // 줄바꿈으로 잘린 텍스트 → 합치기
+            nearest.text = nearest.text + cc.text;
+            cc._merged = true;
+          }
+        });
+        // 합쳐진 셀 제거
+        curr.cells = curr.cells.filter(c => !c._merged);
+        // curr이 비어버리면 행 자체 제거
+        if (curr.cells.length === 0) subjectRows.splice(i, 1);
+      }
+    }
+
+    // 과목명/금액 매칭 — 과목 행과 금액 행을 순서대로 매칭
+    // 일반적 패턴: 과목행 → 금액행 → 과목행 → 금액행 ...
+    // 같은 y좌표 그룹 내에서 x좌표가 일치하는 셀끼리 매칭
+    const found = [];
+    const seen = new Set();
+    let foundIdx = 0;
+
+    subjectRows.forEach((sRow, sIdx) => {
+      // 이 과목 행 바로 다음에 오는 금액 행 찾기 (sRow.y보다 작은 y 중 가장 큰 것)
+      let mRow = null;
+      let bestDy = Infinity;
+      moneyRows.forEach(m => {
+        const dy = sRow.y - m.y;
+        if (dy > 0 && dy < bestDy) { bestDy = dy; mRow = m; }
+      });
+
+      sRow.cells.forEach(sc => {
+        const clean = sc.text.replace(/\s+/g, '');
+        if (!clean || clean.length < 1) return;
+        if (/^\d+과목$/.test(clean)) return;
+        if (/^[\d,]+원?$/.test(clean)) return;
+
+        // 금액 매칭 - 같은 x좌표의 금액 셀 찾기
+        let isFree = false;
+        if (mRow) {
+          let nearest = null;
+          let nearestDist = Infinity;
+          mRow.cells.forEach(mc => {
+            const d = Math.abs(mc.x - sc.x);
+            if (d < nearestDist) { nearestDist = d; nearest = mc; }
+          });
+          if (nearest && nearestDist < 40) {
+            const amount = parseInt(nearest.text.replace(/[,\s]/g, ''), 10);
+            isFree = (amount === 0);
+          }
+        }
+
+        // 매핑 처리
+        let finalName = clean;
+        let isMapped = false;
+        if (PDF_SUBJECT_MAP[clean]) {
+          finalName = PDF_SUBJECT_MAP[clean];
+          isMapped = true;
+        } else if (PDF_SUBJECT_MAP[sc.text]) {
+          finalName = PDF_SUBJECT_MAP[sc.text];
+          isMapped = true;
+        } else {
+          const exact = paletteSubjects.find(p => p.replace(/\s+/g, '') === clean);
+          if (exact) finalName = exact;
+        }
+
+        // 중복은 허용 (사용자가 "모션포폴 모션포폴" 같은 동일 이름도 가능하게)
+        found.push({ name: finalName, originalPdfName: clean, isMapped, isFree, pos: foundIdx++ });
+      });
+    });
+
+    console.log('[PDF 추출] 최종 found:', found.length, '개');
+    found.forEach(f => console.log(`  - ${f.name} (${f.isFree ? '무료' : '유료'})${f.isMapped ? ' [매핑]' : ''}`));
 
     if (found.length === 0) {
       customAlert('PDF에서 과목을 추출하지 못했습니다.\n\nF12 → 콘솔(Console) 탭의 "[PDF 추출]" 로그를 복사해서 알려주세요.');
       return;
     }
 
-    // 6) 금액(무료/유료) 판정
-    //    수강목록 표 구간(tableItems)의 금액 토큰만 순서대로 매칭
-    //    "0" 또는 "600,000" 형식
-    const tableText = tableItems.join(' ');
-    const moneyTokens = (tableText.match(/\d{1,3}(?:,\d{3})+|(?<![\d,])0(?![\d,])/g) || []);
-    console.log('[PDF 추출] 수강목록 구간 금액 토큰:', moneyTokens);
-    found.forEach((f, i) => {
-      if (i < moneyTokens.length) {
-        const m = moneyTokens[i].replace(/,/g, '');
-        f.isFree = (parseInt(m, 10) === 0);
-      } else {
-        f.isFree = false;
-      }
-    });
-    console.log('[PDF 추출] 무료/유료 판정:', found.map(f => `${f.name}:${f.isFree ? '무료' : '유료'}`));
-
-    // 7) 학생 데이터에 병합 저장 (기존 + 신규, 이름 기준 중복 제거)
+    // 6) 학생 데이터에 병합 저장 - 중복 허용 (모션포폴 2개 가능)
     const stu = globalStudentData.find(s => s.id === studentId);
     if (!stu) {
       customAlert('학생 데이터를 찾을 수 없습니다.');
@@ -3889,26 +4016,27 @@ async function handlePDFUpload(input) {
     }
     const existing = parsePdfSubjects(stu.pdfSubjects);
     const merged = [...existing];
-    let newCount = 0;
     let unmappedCount = 0;
     found.forEach(f => {
-      if (!merged.some(e => e.name === f.name)) {
-        merged.push({ id: genPdfId(), name: f.name, isFree: f.isFree });
-        newCount++;
-        if (!f.isMapped && !paletteSubjects.includes(f.name)) unmappedCount++;
-      }
+      // 중복 체크 안 함 - PDF에 나온 그대로 모두 추가
+      merged.push({
+        id: 's' + Date.now() + Math.floor(Math.random() * 100000),
+        name: f.name,
+        isFree: f.isFree
+      });
+      if (!f.isMapped && !paletteSubjects.includes(f.name)) unmappedCount++;
     });
     stu.pdfSubjects = serializePdfSubjects(merged);
     document.getElementById('pdfSubjects').value = stu.pdfSubjects;
     saveToStorage();
     if (typeof syncStudentToFirestore === 'function') syncStudentToFirestore(stu);
 
-    // 8) 학생 이름 탭으로 전환
+    // 7) 학생 이름 탭으로 전환
     currentPaletteTab = '__PDF__:' + studentId;
     renderPalette();
 
     const freeCount = found.filter(f => f.isFree).length;
-    let msg = `PDF에서 ${found.length}개 과목 추출 (신규 ${newCount}개, 무료 ${freeCount}개)`;
+    let msg = `PDF에서 ${found.length}개 과목 추출 (무료 ${freeCount}개)`;
     if (unmappedCount > 0) msg += ` · 매핑 안 됨 ${unmappedCount}개`;
     showToast(`<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> ${msg}`, 'success');
   } catch (e) {
