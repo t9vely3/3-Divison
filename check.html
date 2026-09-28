@@ -89,6 +89,18 @@ function sum(list){
   return t;
 }
 function idOf(s){ return s.id || ((s.name || "") + "/" + (s.birth || s.birthday || "")); }
+function memoN(v){
+  if(!v) return 0;
+  try{ var a = typeof v === "string" ? JSON.parse(v) : v; return Array.isArray(a) ? a.length : (String(v).trim() ? 1 : 0); }
+  catch(e){ return String(v).trim() ? 1 : 0; }
+}
+function blank(v){
+  if(v === undefined || v === null) return true;
+  if(typeof v === "string"){ var t = v.trim(); return t === "" || t === "[]" || t === "{}"; }
+  if(Array.isArray(v)) return v.length === 0;
+  return false;
+}
+var SKIP = { id:1, assignedClasses:1, _updatedAt:1, _updatedBy:1 };
 var CLOUD = { students:[], conf:{} }, LOCAL = { students:[], conf:{} }, PLAN = null;
 
 var CONF = [
@@ -136,6 +148,9 @@ async function run(){
   rows += "<tr><td>수강생</td><td class=\"n\">" + cs.stu + "명</td><td class=\"n\">" + lsm.stu + "명</td><td class=\"n\">" + dv(lsm.stu - cs.stu) + "</td></tr>";
   rows += "<tr><td>배정된 과목</td><td class=\"n\">" + cs.ac + "개</td><td class=\"n\">" + lsm.ac + "개</td><td class=\"n\">" + dv(lsm.ac - cs.ac) + "</td></tr>";
   rows += "<tr><td>확정 체크</td><td class=\"n\">" + cs.ok + "개</td><td class=\"n\">" + lsm.ok + "개</td><td class=\"n\">" + dv(lsm.ok - cs.ok) + "</td></tr>";
+  var cm = CLOUD.students.reduce(function(a,s){ return a + memoN(s.memo); }, 0);
+  var lm = LOCAL.students.reduce(function(a,s){ return a + memoN(s.memo); }, 0);
+  rows += "<tr><td>특이사항 메모</td><td class=\"n\">" + cm + "건</td><td class=\"n\">" + lm + "건</td><td class=\"n\">" + dv(lm - cm) + "</td></tr>";
   rows += "<tr><td>배정이 있는 학생</td><td class=\"n\">" + cs.withAc + "명</td><td class=\"n\">" + lsm.withAc + "명</td><td class=\"n\">" + dv(lsm.withAc - cs.withAc) + "</td></tr>";
   CONF.forEach(function(c){
     var cv = CLOUD.conf[c.id], lv = LOCAL.conf[c.id];
@@ -169,7 +184,15 @@ function plan(){
       if(at == null){ cac.push(Object.assign({}, a)); idx[k] = cac.length - 1; newAc++; if(a.confirmed || a.isConfirmed) newOk++; }
       else if((a.confirmed === true || a.isConfirmed === true) && cac[at].confirmed !== true){ cac[at].confirmed = true; newOk++; }
     });
-    if(newAc || newOk) merge.push({ id:c.id, name:c.name || l.name, ac:cac, newAc:newAc, newOk:newOk });
+    var fill = {}, fillN = 0, memoAdd = 0;
+    Object.keys(l).forEach(function(k){
+      if(SKIP[k] || k.charAt(0) === "_") return;
+      if(blank(l[k])) return;
+      if(!blank(c[k])) return;
+      fill[k] = l[k]; fillN++;
+      if(k === "memo") memoAdd = memoN(l[k]);
+    });
+    if(newAc || newOk || fillN) merge.push({ id:c.id, name:c.name || l.name, ac:cac, newAc:newAc, newOk:newOk, fill:fill, fillN:fillN, memoAdd:memoAdd, acChanged:!!(newAc || newOk) });
   });
   var conf = [];
   CONF.forEach(function(c){
@@ -192,7 +215,7 @@ function planCard(){
     return '<div class="card"><h2>복구할 사본이 없습니다</h2><div class="note">이 브라우저에는 예전 기록이 남아 있지 않습니다. 예전에 이 파일을 쓰던 컴퓨터·브라우저에서 같은 주소로 이 페이지를 열어 보세요.</div></div>';
   var p = PLAN, none = !p.add.length && !p.merge.length && !p.conf.length;
   var list = p.merge.slice(0, 200).map(function(m){
-    return "<tr><td>" + esc(m.name || m.id) + "</td><td class=\"n\">" + (m.newAc ? "+" + m.newAc : "-") + "</td><td class=\"n\">" + (m.newOk ? "+" + m.newOk : "-") + "</td></tr>";
+    return "<tr><td>" + esc(m.name || m.id) + "</td><td class=\"n\">" + (m.newAc ? "+" + m.newAc : "-") + "</td><td class=\"n\">" + (m.newOk ? "+" + m.newOk : "-") + "</td><td class=\"n\">" + (m.memoAdd ? "+" + m.memoAdd : "-") + "</td><td class=\"n\">" + (m.fillN ? "+" + m.fillN : "-") + "</td></tr>";
   }).join("");
   return '<div class="card"><h2>사본에만 있는 내용</h2>' +
     '<div class="stats">' +
@@ -200,19 +223,21 @@ function planCard(){
     '<div class="st"><div class="l">배정이 채워질 학생</div><div class="big">' + p.merge.length + '</div></div>' +
     '<div class="st"><div class="l">되살릴 배정 과목</div><div class="big">' + p.merge.reduce(function(a,m){ return a + m.newAc; }, 0) + '</div></div>' +
     '<div class="st"><div class="l">되살릴 확정 체크</div><div class="big">' + p.merge.reduce(function(a,m){ return a + m.newOk; }, 0) + '</div></div>' +
+    '<div class="st"><div class="l">되살릴 특이사항</div><div class="big">' + p.merge.reduce(function(a,m){ return a + (m.memoAdd || 0); }, 0) + '</div></div>' +
+    '<div class="st"><div class="l">채울 빈 칸</div><div class="big">' + p.merge.reduce(function(a,m){ return a + (m.fillN || 0); }, 0) + '</div></div>' +
     '<div class="st"><div class="l">보충할 설정</div><div class="big">' + p.conf.reduce(function(a,c){ return a + c.n; }, 0) + '</div></div>' +
     '</div>' +
     (none
       ? '<div class="note">클라우드에 이미 다 들어 있습니다. 되살릴 것이 없습니다.</div>'
-      : '<div class="scroll">' + (list ? '<table><thead><tr><th>학생</th><th class="n">배정 추가</th><th class="n">확정 추가</th></tr></thead><tbody>' + list + '</tbody></table>' : "") + '</div>' +
+      : '<div class="scroll">' + (list ? '<table><thead><tr><th>학생</th><th class="n">배정 추가</th><th class="n">확정 추가</th><th class="n">특이사항</th><th class="n">빈 칸</th></tr></thead><tbody>' + list + '</tbody></table>' : "") + '</div>' +
         (p.conf.length ? '<div class="note">설정 보충: ' + esc(p.conf.map(function(c){ return c.name + " " + c.n + "건"; }).join(" · ")) + '</div>' : "") +
         '<div style="margin-top:14px"><button class="warn" onclick="restore()">이 내용을 클라우드에 올리기</button><button class="ghost" onclick="dl()">먼저 백업 내려받기</button></div>' +
-        '<div class="note">더하기만 합니다. 클라우드에 이미 있는 학생·배정·확정은 지우거나 바꾸지 않고, 사본에만 있던 것을 채워 넣습니다. 올리기 전에 백업을 한 번 받아 두시길 권합니다.</div>') +
+        '<div class="note">더하기만 합니다. 클라우드에 이미 있는 학생·배정·확정·특이사항은 지우거나 바꾸지 않고, 비어 있는 칸에만 사본 내용을 채워 넣습니다. 올리기 전에 백업을 한 번 받아 두시길 권합니다.</div>') +
     '</div>';
 }
 async function restore(){
   var p = PLAN; if(!p) return;
-  if(!confirm("학생 " + p.add.length + "명 추가, " + p.merge.length + "명 배정 보충, 설정 " + p.conf.length + "건을 클라우드에 올립니다. 진행할까요?")) return;
+  if(!confirm("학생 " + p.add.length + "명 추가, " + p.merge.length + "명 보충(배정 · 확정 체크 · 특이사항), 설정 " + p.conf.length + "건을 클라우드에 올립니다. 진행할까요?")) return;
   var btn = event.target; btn.disabled = true; btn.textContent = "올리는 중…";
   var me = (auth.currentUser && auth.currentUser.email) || "", done = 0, errs = [];
   var stamp = function(){ return firebase.firestore.FieldValue.serverTimestamp(); };
@@ -223,7 +248,9 @@ async function restore(){
   }
   for(var k = 0; k < p.merge.length; k++){
     var m = p.merge[k];
-    try{ await db.collection("students").doc(String(m.id)).set({ assignedClasses:m.ac, _updatedAt:stamp(), _updatedBy:me }, { merge:true }); done++; }
+    var body = Object.assign({}, m.fill || {}, { _updatedAt:stamp(), _updatedBy:me });
+    if(m.acChanged) body.assignedClasses = m.ac;
+    try{ await db.collection("students").doc(String(m.id)).set(body, { merge:true }); done++; }
     catch(e){ errs.push((m.name || m.id) + ": " + (e.code || "error")); }
   }
   for(var c = 0; c < p.conf.length; c++){
